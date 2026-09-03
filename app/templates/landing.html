@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}LeetStreak &mdash; daily LeetCode, with your friends watching{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Keep the streak. Together.</h1>
+  <p class="lede">
+    Green squares for your LeetCode habit, and your friends' squares right next to yours.
+    Make a group, send the invite link, and see who is actually doing it every day.
+  </p>
+  <p class="hero-actions">
+    <a class="btn large" href="/start">Get started</a>
+  </p>
+</section>
+
+<section class="hero-points">
+  <div>
+    <h3>Private by group</h3>
+    <p class="muted">A board is visible only to the people you invited. No public leaderboard.</p>
+  </div>
+  <div>
+    <h3>Pulls itself</h3>
+    <p class="muted">Reads your public LeetCode submission calendar &mdash; the same squares
+      already on your profile. Give us your username and nothing else.</p>
+  </div>
+  <div>
+    <h3>Honest about today</h3>
+    <p class="muted">A streak stays lit until midnight, then shows as at risk, so you can see
+      who still needs a nudge.</p>
+  </div>
+</section>
+{% endblock %}

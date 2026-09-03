@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "leetstreak",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "uvicorn",
+        "app.main:app",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "port": 8000
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ group.name }} &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>{{ group.name }}</h1>
+    <p class="sub">
+      {{ board.members | length }} member{{ '' if board.members | length == 1 else 's' }}
+      &middot; {{ board.done_today | length }} of {{ board.tracked_count }} solved today
+      {% if board.since %}
+        &middot; since {{ board.since.strftime('%-d %b %Y') }}
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <div class="segmented">
+      {% for key in board.range_choices %}
+        <a href="/g/{{ group.id }}?range={{ key }}"
+           class="{{ 'active' if board.range_key == key }}">{{ key }}</a>
+      {% endfor %}
+    </div>
+    <form method="post" action="/g/{{ group.id }}/refresh" class="inline">
+      <button type="submit" class="btn">Refresh</button>
+    </form>
+  </div>
+</section>
+
+<section class="today-strip">
+  <h2>Today &middot; {{ board.today.strftime('%a %d %b') }}</h2>
+  {% if board.tracked_count == 0 %}
+    <p class="muted">Nobody here has connected an account yet.</p>
+  {% else %}
+    <ul class="today-list">
+      {% for member in board.members if member.is_tracked %}
+        <li class="{{ 'done' if member.stats.done_today else 'pending' }}">
+          {% if member.user.avatar_url %}
+            <img class="avatar" src="{{ member.user.avatar_url }}" alt="" loading="lazy">
+          {% else %}
+            <span class="avatar placeholder" aria-hidden="true">{{ member.name[:1] | upper }}</span>
+          {% endif %}
+          <span class="today-who">
+            <span class="today-name">{{ member.name }}</span>
+            <span class="today-state">
+              {% if member.stats.done_today %}
+                <span class="tick" aria-hidden="true">&#10003;</span> solved today
+              {% else %}
+                not yet
+              {% endif %}
+            </span>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<section class="board">
+  {% for member in board.members %}
+    <article class="member {{ 'untracked' if not member.is_tracked }}">
+      <div class="member-id">
+        {% if member.user.avatar_url %}
+          <img class="avatar" src="{{ member.user.avatar_url }}" alt="">
+        {% else %}
+          <span class="avatar placeholder" aria-hidden="true">{{ member.name[:1] | upper }}</span>
+        {% endif %}
+        <div class="member-name">
+          <strong>{{ member.name }}
+            {% if member.user.id == user.id %}<span class="you">you</span>{% endif %}
+          </strong>
+          {% if member.user.leetcode_username %}
+            <a class="muted small" target="_blank" rel="noopener"
+               href="https://leetcode.com/u/{{ member.user.leetcode_username }}/">
+              /{{ member.user.leetcode_username }}
+            </a>
+          {% else %}
+            <span class="muted small">no account linked</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="member-stats">
+        <div class="stat streak {{ 'at-risk' if member.stats.at_risk }}">
+          <span class="value">{{ member.stats.current_streak }}</span>
+          <span class="label">
+            day streak{% if member.stats.at_risk %} &middot; at risk{% endif %}
+          </span>
+        </div>
+        <div class="stat">
+          <span class="value">{{ member.stats.longest_streak }}</span>
+          <span class="label">longest</span>
+        </div>
+        <div class="stat">
+          <span class="value">{{ member.stats.active_days }}</span>
+          <span class="label">active day{{ '' if member.stats.active_days == 1 else 's' }}</span>
+        </div>
+      </div>
+
+      <div class="member-graph">
+        {% with cal = member.calendar,
+                label = member.name ~ ': ' ~ member.stats.active_days ~ ' active days, '
+                        ~ member.stats.total_solved ~ ' submissions in this window' %}
+          {% include "_heatmap.html" %}
+        {% endwith %}
+      </div>
+
+      <div class="member-actions">
+        {% if is_owner and member.user.id != group.owner_id %}
+          <form method="post" action="/g/{{ group.id }}/members/{{ member.user.id }}/remove"
+                data-confirm="Remove {{ member.name }} from {{ group.name }}?">
+            <button type="submit" class="linklike danger">Remove</button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if member.errors %}
+        <p class="member-error">{{ member.errors | join(' · ') }}</p>
+      {% endif %}
+    </article>
+  {% endfor %}
+</section>
+
+<section class="legend">
+  <span class="muted small">Less</span>
+  <span class="hm-cell l0"></span>
+  <span class="hm-cell l1"></span>
+  <span class="hm-cell l2"></span>
+  <span class="hm-cell l3"></span>
+  <span class="hm-cell l4"></span>
+  <span class="muted small">More</span>
+</section>
+
+<section class="panel">
+  <h2>Invite</h2>
+  <p class="muted small">Anyone with this link can join the group and see everyone's board.</p>
+  <div class="copy-row">
+    <input type="text" readonly value="{{ invite_url }}" id="invite-url" aria-label="Invite link">
+    <button class="btn" type="button" data-copy="#invite-url">Copy</button>
+  </div>
+
+  <div class="panel-actions">
+    {% if is_owner %}
+      <form method="post" action="/g/{{ group.id }}/rename" class="inline-form">
+        <input type="text" name="name" value="{{ group.name }}" maxlength="60" aria-label="Group name">
+        <button type="submit" class="btn ghost">Rename</button>
+      </form>
+      <form method="post" action="/g/{{ group.id }}/invite/rotate" class="inline"
+            data-confirm="Generate a new invite link? The current one stops working.">
+        <button type="submit" class="linklike">Reset invite link</button>
+      </form>
+      <form method="post" action="/g/{{ group.id }}/delete" class="inline"
+            data-confirm="Delete {{ group.name }} permanently? This cannot be undone.">
+        <button type="submit" class="linklike danger">Delete group</button>
+      </form>
+    {% else %}
+      <form method="post" action="/g/{{ group.id }}/leave" class="inline"
+            data-confirm="Leave {{ group.name }}?">
+        <button type="submit" class="linklike danger">Leave group</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

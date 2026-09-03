@@ -1,0 +1,28 @@
+{# Expects: cal (streaks.Calendar), label (accessible description) #}
+<div class="heatmap{% if cal.columns | length <= 5 %} narrow{% endif %}"
+     style="--weeks: {{ cal.columns | length }}">
+  <div class="heatmap-months" aria-hidden="true">
+    {% for month in cal.month_labels %}
+      <span class="month" style="grid-column: {{ month.column + 1 }}">{{ month.text }}</span>
+    {% endfor %}
+  </div>
+  <div class="heatmap-body">
+    <div class="heatmap-days" aria-hidden="true">
+      <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>
+    </div>
+    <div class="heatmap-grid" role="img" aria-label="{{ label }}">
+      {% for column in cal.columns %}
+        <div class="hm-col">
+          {% for cell in column %}
+            {% if cell.is_future or cell.is_before_start %}
+              <span class="hm-cell future"></span>
+            {% else %}
+              <span class="hm-cell l{{ cell.level }}{% if cell.is_today %} today{% endif %}"
+                    title="{{ cell.count }} on {{ cell.day.strftime('%a %d %b %Y') }}"></span>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>

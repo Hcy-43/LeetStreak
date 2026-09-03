@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Home &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>{{ user.display_name or user.handle }}</h1>
+    <p class="sub">
+      {% if me.stats.done_today %}
+        Solved today. Streak is safe.
+      {% elif me.stats.current_streak %}
+        Nothing today yet &mdash; your {{ me.stats.current_streak }}-day streak breaks at midnight.
+      {% elif me.is_tracked %}
+        No streak going. Solve one today and it starts at 1.
+      {% else %}
+        Link a LeetCode account to start tracking.
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <div class="segmented">
+      {% for key in range_options %}
+        <a href="/?range={{ key }}" class="{{ 'active' if me.calendar.columns | length == range_options[key] }}">{{ key }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="panel me">
+  <div class="me-stats">
+    <div class="stat streak {{ 'at-risk' if me.stats.at_risk }}">
+      <span class="value">{{ me.stats.current_streak }}</span>
+      <span class="label">day streak{% if me.stats.at_risk %} &middot; at risk{% endif %}</span>
+    </div>
+    <div class="stat">
+      <span class="value">{{ me.stats.longest_streak }}</span>
+      <span class="label">longest</span>
+    </div>
+    <div class="stat">
+      <span class="value">{{ me.stats.active_days }}</span>
+      <span class="label">active day{{ '' if me.stats.active_days == 1 else 's' }}</span>
+    </div>
+    <div class="stat">
+      <span class="value">{{ me.stats.total_solved }}</span>
+      <span class="label">submissions</span>
+    </div>
+  </div>
+
+  <div class="me-graph">
+    {% with cal = me.calendar,
+            label = 'Your activity: ' ~ me.stats.active_days ~ ' active days' %}
+      {% include "_heatmap.html" %}
+    {% endwith %}
+  </div>
+
+  <div class="legend">
+    <span class="muted small">Less</span>
+    <span class="hm-cell l0"></span><span class="hm-cell l1"></span>
+    <span class="hm-cell l2"></span><span class="hm-cell l3"></span>
+    <span class="hm-cell l4"></span>
+    <span class="muted small">More</span>
+  </div>
+
+  {% if me.errors %}
+    <p class="member-error">{{ me.errors | join(' · ') }}</p>
+  {% endif %}
+</section>
+
+<section class="page-head groups-head">
+  <div>
+    <h2>Your groups</h2>
+    <p class="sub">Each group is its own board. Nobody outside it can see your streak.</p>
+  </div>
+</section>
+
+{% if groups %}
+  <ul class="group-list">
+    {% for group in groups %}
+      <li>
+        <a href="/g/{{ group.id }}">
+          <strong>{{ group.name }}</strong>
+          <span class="muted small">
+            {{ group.member_count }} member{{ '' if group.member_count == 1 else 's' }}
+            {% if group.my_role == 'owner' %} &middot; you own this{% endif %}
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted empty">No groups yet. Make one below, then send your friends the invite link.</p>
+{% endif %}
+
+<section class="panel">
+  <h2>Start a group</h2>
+  <form method="post" action="/groups" class="inline-form">
+    <input type="text" name="name" placeholder="Daily grind crew" maxlength="60" required
+           aria-label="Group name">
+    <button type="submit" class="btn">Create</button>
+  </form>
+  <p class="muted small">Joining someone else's group? Just open the invite link they send you.</p>
+</section>
+{% endblock %}

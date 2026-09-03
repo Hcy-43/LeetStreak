@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LeetStreak{% endblock %}</title>
+  <script>
+    // Inline and blocking on purpose: a stored theme must be on <html> before the
+    // first paint, otherwise dark-mode users get a white flash on every page load.
+    try {
+      var saved = localStorage.getItem("theme");
+      if (saved === "dark" || saved === "light") {
+        document.documentElement.dataset.theme = saved;
+      }
+    } catch (e) { /* private mode: fall back to the OS preference */ }
+  </script>
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2326a641'/></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      LeetStreak
+    </a>
+    <nav class="topnav">
+      <button type="button" class="theme-toggle" id="theme-toggle"
+              aria-label="Switch between light and dark" title="Light / dark">
+        <svg class="icon-sun" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <circle cx="8" cy="8" r="3.25" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M8 1v1.5M8 13.5V15M15 8h-1.5M2.5 8H1M12.95 3.05l-1.06 1.06M4.11 11.89l-1.06 1.06M12.95 12.95l-1.06-1.06M4.11 4.11L3.05 3.05"/>
+          </g>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" d="M9.5 1.5a6.5 6.5 0 1 0 5 10.6A5.5 5.5 0 0 1 9.5 1.5z"/>
+        </svg>
+      </button>
+      {% if user %}
+        <a class="navlink" href="/">Home</a>
+        <a class="whoami" href="/settings" title="Settings">
+          {% if user.avatar_url %}
+            <img class="avatar sm" src="{{ user.avatar_url }}" alt="">
+          {% else %}
+            <span class="avatar sm placeholder" aria-hidden="true">
+              {{ (user.display_name or user.handle)[:1] | upper }}
+            </span>
+          {% endif %}
+          {{ user.display_name or user.handle }}
+        </a>
+      {% else %}
+        <a class="navlink" href="/start">Sign in</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  {% if flash %}
+    <div class="flash {{ flash.kind }}" role="status">{{ flash.message }}</div>
+  {% endif %}
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span>LeetStreak &mdash; daily LeetCode, with your friends watching.</span>
+  </footer>
+
+  <script src="/static/app.js?v={{ asset_version }}" defer></script>
+</body>
+</html>

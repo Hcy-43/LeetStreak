@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Sign in &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+
+  {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+  {% if notice %}<p class="form-notice" role="status">{{ notice }}</p>{% endif %}
+
+  {# ---------------------------------------------------------------- step 1: email #}
+  {% if step == "email" %}
+    <h1>Sign in or create an account</h1>
+    <p class="muted small">One box. We will work out which one you need.</p>
+
+    <form method="post" action="/start" class="stacked-form">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" required autofocus
+             autocomplete="username" maxlength="254" placeholder="you@gmail.com"
+             value="{{ email }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="btn">Continue</button>
+    </form>
+
+    {% if settings.google_oauth_enabled or settings.github_oauth_enabled %}
+      <div class="divider"><span>or</span></div>
+      {% if settings.google_oauth_enabled %}
+        <a class="btn ghost block provider" href="/auth/google?next={{ next_url | urlencode }}">
+          {% include "_google_mark.svg" %} Continue with Google
+        </a>
+      {% endif %}
+      {% if settings.github_oauth_enabled %}
+        <a class="btn ghost block provider" href="/auth/github?next={{ next_url | urlencode }}">
+          Continue with GitHub
+        </a>
+      {% endif %}
+    {% endif %}
+
+  {# ------------------------------------------------------------- step 2a: password #}
+  {% elif step == "password" %}
+    <h1>Welcome back</h1>
+    <p class="identity">{{ email }} <a href="/start" class="small">change</a></p>
+
+    <form method="post" action="/start/password" class="stacked-form">
+      <input type="hidden" name="email" value="{{ email }}">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required autofocus
+             autocomplete="current-password" maxlength="200">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="btn">Sign in</button>
+    </form>
+    <form method="post" action="/start/forgot" class="inline">
+      <input type="hidden" name="email" value="{{ email }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="linklike">Forgotten your password?</button>
+    </form>
+
+  {# ------------------------------------------- step 2b: account belongs to a provider #}
+  {% elif step == "provider" %}
+    <h1>Use your provider</h1>
+    <p class="identity">{{ email }} <a href="/start" class="small">change</a></p>
+    <p class="muted">
+      This account signs in with
+      {{ form.providers | map('capitalize') | join(' or ') or 'a linked provider' }},
+      not a password.
+    </p>
+    {% if 'google' in form.providers and settings.google_oauth_enabled %}
+      <a class="btn block provider" href="/auth/google?next={{ next_url | urlencode }}">
+        {% include "_google_mark.svg" %} Continue with Google
+      </a>
+    {% endif %}
+    {% if 'github' in form.providers and settings.github_oauth_enabled %}
+      <a class="btn ghost block provider" href="/auth/github?next={{ next_url | urlencode }}">
+        Continue with GitHub
+      </a>
+    {% endif %}
+
+  {# --------------------------------------------------------- step 3: verify the code #}
+  {% elif step == "verify" %}
+    <h1>Check your email</h1>
+    <p class="identity">{{ email }} <a href="/start" class="small">change</a></p>
+
+    <form method="post" action="/start/verify" class="stacked-form">
+      <label for="code">Verification code</label>
+      <input type="text" id="code" name="code" required autofocus class="code-input"
+             inputmode="numeric" autocomplete="one-time-code" pattern="[0-9\s\-]*"
+             maxlength="8" placeholder="000000">
+      <p class="hint">The code expires in {{ code_ttl_minutes }} minutes.</p>
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="btn">Verify</button>
+    </form>
+
+    <form method="post" action="/start/resend" class="inline">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="linklike">Send another code</button>
+    </form>
+
+  {# ------------------------------------------------------ step 4: finish the account #}
+  {% elif step == "profile" %}
+    <h1>Finish setting up</h1>
+    <p class="identity verified">{{ email }} <span class="tick">&#10003; verified</span></p>
+
+    <form method="post" action="/start/complete" class="stacked-form">
+      <label for="password">Choose a password</label>
+      <input type="password" id="password" name="password" required autofocus
+             autocomplete="new-password" minlength="10" maxlength="200">
+      <p class="hint">At least 10 characters. Longer beats complicated.</p>
+
+      <label for="password_confirm">Confirm password</label>
+      <input type="password" id="password_confirm" name="password_confirm" required
+             autocomplete="new-password" maxlength="200">
+
+      <label for="leetcode_username">LeetCode username</label>
+      <input type="text" id="leetcode_username" name="leetcode_username" required
+             maxlength="60" placeholder="your-leetcode-handle"
+             value="{{ form.leetcode_username or '' }}">
+      <p class="hint">
+        The name in your profile URL: <code>leetcode.com/u/<strong>this-part</strong>/</code>.
+        We check it exists before creating your account.
+      </p>
+
+      <label for="display_name">Display name <span class="muted">(optional)</span></label>
+      <input type="text" id="display_name" name="display_name" maxlength="60"
+             placeholder="Defaults to your LeetCode username"
+             value="{{ form.display_name or '' }}">
+
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="btn">Create account</button>
+    </form>
+  {# ----------------------------------------------------- step 4b: set a new password #}
+  {% elif step == "reset" %}
+    <h1>Choose a new password</h1>
+    <p class="identity verified">{{ email }} <span class="tick">&#10003; verified</span></p>
+
+    <form method="post" action="/start/reset" class="stacked-form">
+      <label for="password">New password</label>
+      <input type="password" id="password" name="password" required autofocus
+             autocomplete="new-password" minlength="10" maxlength="200">
+      <p class="hint">At least 10 characters. Longer beats complicated.</p>
+
+      <label for="password_confirm">Confirm new password</label>
+      <input type="password" id="password_confirm" name="password_confirm" required
+             autocomplete="new-password" maxlength="200">
+
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="btn">Save and sign in</button>
+    </form>
+  {% endif %}
+
+</section>
+{% endblock %}

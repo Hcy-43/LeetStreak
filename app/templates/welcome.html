@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}One more thing &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+  {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+
+  <h1>What&rsquo;s your LeetCode username?</h1>
+  <p class="muted">
+    It is the only thing we need. We read your public submission calendar &mdash; the same
+    squares already on your LeetCode profile &mdash; and turn it into your streak.
+  </p>
+
+  <form method="post" action="/welcome" class="stacked-form">
+    <label for="leetcode_username">LeetCode username</label>
+    <input type="text" id="leetcode_username" name="leetcode_username" required autofocus
+           maxlength="60" placeholder="your-leetcode-handle" value="{{ value }}"
+           autocapitalize="none" autocorrect="off" spellcheck="false">
+    <p class="hint">
+      The name in your profile URL: <code>leetcode.com/u/<strong>this-part</strong>/</code>.
+      We check it exists before saving.
+    </p>
+    <button type="submit" class="btn">Show me my streak</button>
+  </form>
+
+  <p class="hint">
+    Nothing here is public. Your squares are only ever visible to people in a group with you.
+  </p>
+</section>
+{% endblock %}

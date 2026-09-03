@@ -1,0 +1,6 @@
+# Caddy fetches and renews the TLS certificate on its own; the only requirement is
+# that LEETSTREAK_DOMAIN already points at this server.
+{$LEETSTREAK_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}

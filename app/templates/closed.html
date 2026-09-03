@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Registration closed &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+  <h1>Registration is closed</h1>
+  <p class="muted">
+    This server is not accepting new accounts. Ask whoever runs it to set
+    <code>ALLOW_REGISTRATION=true</code>, or to create an account for you.
+  </p>
+  <a class="btn" href="/start">Back to sign in</a>
+</section>
+{% endblock %}

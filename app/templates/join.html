@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Join {{ group.name }} &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+  <h1>Join &ldquo;{{ group.name }}&rdquo;</h1>
+  <p class="muted">
+    {{ members | length }} member{{ '' if members | length == 1 else 's' }} already here.
+    Joining means everyone in the group can see your daily activity.
+  </p>
+
+  <ul class="member-preview">
+    {% for member in members %}
+      <li>
+        {% if member.avatar_url %}
+          <img class="avatar sm" src="{{ member.avatar_url }}" alt="">
+        {% else %}
+          <span class="avatar sm placeholder" aria-hidden="true">
+            {{ (member.display_name or member.handle)[:1] | upper }}
+          </span>
+        {% endif %}
+        {{ member.display_name or member.handle }}
+      </li>
+    {% endfor %}
+  </ul>
+
+  <form method="post" action="/join/{{ code }}">
+    <button type="submit" class="btn large">Join group</button>
+  </form>
+  <p class="muted small"><a href="/">No thanks, take me back</a></p>
+</section>
+{% endblock %}

@@ -1,0 +1,39 @@
+# Render blueprint. The web service is free; the database is Neon (also free), so
+# DATABASE_URL is set by hand rather than by Render.
+#
+# Free services sleep after 15 minutes idle and take ~1 minute to wake. Keep it warm
+# with an external pinger against /healthz every 10 minutes - cron-job.org and
+# UptimeRobot both do this free. Render's own cron jobs are $1/month, so they are not
+# part of this blueprint.
+#
+# Staying awake all month costs about 720 of the free tier's 750 instance-hours, so
+# this is the only free service you can run continuously in the workspace.
+
+services:
+  - type: web
+    name: leetstreak
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # Paste the Neon connection string here in the dashboard, or set it as a
+      # secret. It is not in this file because it contains a password.
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: BASE_URL
+        sync: false          # https://leetstreak.onrender.com, or your domain
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Neon's free tier allows few connections, and a sleeping free service can
+      # leave some behind.
+      - key: DB_POOL_MAX
+        value: "3"
