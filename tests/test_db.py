@@ -116,3 +116,17 @@ class TestPool:
     def test_postgres_urls_are_normalised(self):
         assert db.normalise_dsn("postgres://u:p@h/db") == "postgresql://u:p@h/db"
         assert db.normalise_dsn("postgresql://u:p@h/db") == "postgresql://u:p@h/db"
+
+    def test_quotes_copied_from_a_dashboard_are_stripped(self):
+        """Providers show the value as shell syntax; people paste the quotes too."""
+        wanted = "postgresql://u:p@h/db?sslmode=require"
+        assert db.normalise_dsn(f'"{wanted}"') == wanted
+        assert db.normalise_dsn(f"'{wanted}'") == wanted
+        assert db.normalise_dsn(f'  "{wanted}"  ') == wanted
+        assert db.normalise_dsn(f'"postgres://u:p@h/db?sslmode=require"') == wanted
+
+    def test_an_unquoted_url_is_untouched(self):
+        wanted = "postgresql://u:p@h/db?sslmode=require"
+        assert db.normalise_dsn(wanted) == wanted
+        # A lone quote is not a matched pair and must not be silently eaten.
+        assert db.normalise_dsn('"' + wanted) == '"' + wanted

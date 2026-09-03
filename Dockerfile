@@ -16,6 +16,11 @@ ENV PATH="/srv/.venv/bin:$PATH" \
 
 # State lives in Postgres now, so the container itself is disposable and needs no
 # volume. DATABASE_URL comes from the environment.
+# Hosts inject the port to bind on. Render defaults to 10000; 8000 keeps a plain
+# `docker run -p 8000:8000` working locally.
+ENV PORT=8000
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form so $PORT expands, and exec so uvicorn is PID 1 and gets SIGTERM
+# directly - otherwise shutdown hangs until the platform kills it.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

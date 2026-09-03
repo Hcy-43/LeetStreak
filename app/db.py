@@ -119,7 +119,18 @@ _dsn: str | None = None
 
 
 def normalise_dsn(url: str) -> str:
-    """Accept the postgres:// form that hosts hand out; psycopg wants postgresql://."""
+    """Clean up a connection string copied from a provider's dashboard.
+
+    Neon and friends present it as `DATABASE_URL="postgres://..."`, which is shell
+    syntax. Pasted whole into a hosting panel, the quotes become part of the value
+    and libpq reports `invalid connection option` on a fragment of the URL - an
+    error that tells you nothing about the actual mistake.
+    """
+    url = url.strip()
+    for quote in ('"', "'"):
+        if len(url) >= 2 and url.startswith(quote) and url.endswith(quote):
+            url = url[1:-1].strip()
+            break
     if url.startswith("postgres://"):
         return "postgresql://" + url[len("postgres://") :]
     return url
