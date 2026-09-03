@@ -734,6 +734,34 @@ class TestOnboarding:
         assert response.headers["location"] == "/"
 
 
+class TestPublicPages:
+    """Google's consent screen links to these, so they must work signed out."""
+
+    def test_privacy_is_public(self, client):
+        client.cookies.clear()
+        response = client.get("/privacy")
+        assert response.status_code == 200
+        assert "Privacy" in response.text
+
+    def test_terms_is_public(self, client):
+        client.cookies.clear()
+        response = client.get("/terms")
+        assert response.status_code == 200
+        assert "Terms of use" in response.text
+
+    def test_they_say_boards_are_private(self, client):
+        body = client.get("/privacy").text
+        assert "in a group with you" in body
+
+    def test_they_disclaim_affiliation_with_leetcode(self, client):
+        assert "not affiliated" in client.get("/terms").text.lower()
+
+    def test_the_footer_links_to_both(self, client):
+        body = client.get("/").text
+        assert 'href="/privacy"' in body
+        assert 'href="/terms"' in body
+
+
 class TestInviteThenSignUp:
     """Opening an invite link before you have an account must still land you there."""
 

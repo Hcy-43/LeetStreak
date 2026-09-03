@@ -127,6 +127,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 }
 .whoami:hover { border-color: var(--border); background: var(--surface-2); }
 
+.prose { max-width: 680px; margin-inline: auto; line-height: 1.65; }
+.prose h2 { margin-top: 1.8rem; font-size: 1.05rem; }
+.prose ul { padding-left: 1.2rem; }
+.prose li { margin: .3rem 0; }
+.footer-links { display: inline-flex; gap: .9rem; margin-left: auto; }
+.footer-links a { color: var(--muted); text-decoration: none; }
+.footer-links a:hover { color: var(--text); text-decoration: underline; }
+
 .footer {
   border-top: 1px solid var(--border);
   padding: 1rem 1.25rem; color: var(--muted); font-size: .82rem;

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Privacy &mdash; LeetStreak{% endblock %}
+
+{% block content %}
+<section class="panel prose">
+  <h1>Privacy</h1>
+  <p class="muted">Last updated 3 September 2026.</p>
+
+  <p>
+    LeetStreak is a small side project run by one person for a group of friends. It is
+    not a company and it does not sell anything. This page describes exactly what it
+    stores and who can see it.
+  </p>
+
+  <h2>What is stored about you</h2>
+  <ul>
+    <li>Your <strong>email address</strong>, used to sign you in and to send verification codes.</li>
+    <li>A <strong>hash of your password</strong>, if you set one. The password itself is never stored and cannot be recovered from the hash.</li>
+    <li>Your <strong>LeetCode username</strong>, and the <strong>daily counts</strong> of solved problems read from it.</li>
+    <li>Your <strong>display name</strong> and timezone.</li>
+    <li>If you sign in with Google: the account identifier Google gives us, plus the name and profile picture on that account.</li>
+    <li>Which groups you belong to.</li>
+  </ul>
+
+  <h2>Where the LeetCode data comes from</h2>
+  <p>
+    We read the public submission calendar from your LeetCode profile &mdash; the same
+    green squares anyone can see by visiting it. We never ask for your LeetCode
+    password and have no access to your account.
+  </p>
+
+  <h2>Who can see it</h2>
+  <p>
+    Your squares and streak are visible to <strong>the people in a group with you</strong>,
+    and to nobody else. There is no public leaderboard, no directory, and no way to
+    browse other people's boards. Someone who signs up but joins no group sees only
+    their own.
+  </p>
+
+  <h2>Who else is involved</h2>
+  <ul>
+    <li><strong>Render</strong> hosts the application.</li>
+    <li><strong>Neon</strong> hosts the database.</li>
+    <li><strong>Google</strong>, if you choose to sign in with it.</li>
+    <li><strong>Gmail</strong> delivers verification codes.</li>
+    <li><strong>LeetCode</strong>, whose public API we read.</li>
+  </ul>
+  <p>
+    Nothing is sold or shared with anyone else. There are no analytics, no advertising,
+    and no tracking cookies &mdash; the only cookies are the one that keeps you signed
+    in, a short-lived one during sign-up, and your light/dark preference.
+  </p>
+
+  <h2>Deleting your data</h2>
+  <p>
+    Email the address at the bottom of this page and your account and all of its
+    activity will be deleted. Leaving a group removes your board from it immediately.
+  </p>
+
+  <h2>Honestly</h2>
+  <p>
+    This is a hobby project on free hosting. It is built carefully &mdash; passwords are
+    hashed with scrypt, sessions are signed, boards are private to their groups &mdash;
+    but please do not treat it as critical infrastructure, and do not reuse a password
+    here that protects anything important.
+  </p>
+
+  <p class="muted"><a href="/">Back to LeetStreak</a></p>
+</section>
+{% endblock %}

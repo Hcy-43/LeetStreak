@@ -237,6 +237,16 @@ async def healthz() -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy(request: Request):
+    return render(request, "privacy.html", {"user": require_user(request)})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms(request: Request):
+    return render(request, "terms.html", {"user": require_user(request)})
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request, range: str = Query(default="1y")):
     """Your own streak first, your groups underneath."""
