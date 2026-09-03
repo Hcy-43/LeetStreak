@@ -533,6 +533,33 @@ class TestAccountLinking:
         with db.connection() as conn:
             assert conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"] == 1
 
+    def test_a_network_failure_is_a_sign_in_error_not_a_500(self, client, monkeypatch):
+        """A dropped connection to Google must not surface as Internal Server Error."""
+        import httpx
+
+        from app import auth
+
+        async def boom(code, settings):
+            raise httpx.ConnectTimeout("timed out")
+
+        monkeypatch.setattr(auth, "_exchange_google", boom)
+        with pytest.raises(auth.AuthError, match="Could not reach Google"):
+            import asyncio
+
+            asyncio.run(auth.exchange_google_code("abc"))
+
+    def test_unreadable_json_is_a_sign_in_error(self, client, monkeypatch):
+        from app import auth
+
+        async def garbage(code, settings):
+            raise ValueError("not json")
+
+        monkeypatch.setattr(auth, "_exchange_google", garbage)
+        with pytest.raises(auth.AuthError, match="unreadable"):
+            import asyncio
+
+            asyncio.run(auth.exchange_google_code("abc"))
+
     def test_google_sign_in_is_refused_when_not_configured(self, client):
         response = client.get("/auth/google", follow_redirects=False)
         assert response.status_code == 303
@@ -625,6 +652,62 @@ class TestOnboarding:
         assert response.status_code == 303
         assert response.headers["location"] == "/"
         assert store.get_user(user["id"])["leetcode_username"] == "newcomer"
+
+    def test_the_board_is_populated_before_you_land_on_it(self, client, monkeypatch):
+        """Onboarding must not redirect to an empty grid that needs a refresh."""
+        from app import main, store
+
+        synced: list[str] = []
+
+        async def recording_sync(users, settings, concurrency=4):
+            for u in users:
+                synced.append(u["handle"])
+                store.replace_activity(u["id"], "leetcode", {date.today(): 3})
+            return {}
+
+        monkeypatch.setattr(main.sync, "sync_users", recording_sync)
+
+        user = store.upsert_oauth_user(
+            provider="google", subject="g-sync", handle="newcomer",
+            display_name="New Comer", avatar_url="", email="newcomer@example.com",
+        )
+        sign_in_as(client, user["id"])
+        response = client.post(
+            "/welcome", data={"leetcode_username": "newcomer"}, follow_redirects=True
+        )
+
+        assert synced == ["newcomer"], "the first sync must be awaited, not backgrounded"
+        # The board that renders on arrival already has the day on it.
+        assert "day streak" in response.text
+        assert store.activity_for_users([user["id"]])[user["id"]]["leetcode"]
+
+    def test_a_slow_first_sync_does_not_hang_the_request(self, client, monkeypatch):
+        """If LeetCode stalls we give up waiting and finish in the background."""
+        import asyncio as _asyncio
+
+        from app import main, store
+
+        backgrounded: list[int] = []
+
+        async def never_returns(users, settings, concurrency=4):
+            await _asyncio.sleep(60)
+
+        monkeypatch.setattr(main.sync, "sync_users", never_returns)
+        monkeypatch.setattr(main.sync, "schedule",
+                            lambda users, settings: backgrounded.append(users[0]["id"]))
+        monkeypatch.setattr(main, "FIRST_SYNC_WAIT_SECONDS", 0.05)
+
+        user = store.upsert_oauth_user(
+            provider="google", subject="g-slow", handle="slowpoke",
+            display_name="Slow Poke", avatar_url="", email="slow@example.com",
+        )
+        sign_in_as(client, user["id"])
+        response = client.post(
+            "/welcome", data={"leetcode_username": "slowpoke"}, follow_redirects=False
+        )
+
+        assert response.status_code == 303
+        assert backgrounded == [user["id"]]
 
     def test_a_bad_username_is_caught_here_too(self, client):
         self._google_user(client)

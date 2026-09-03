@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -168,6 +169,23 @@ def take_flash(request: Request) -> dict[str, str] | None:
     except BadSignature:
         return None
     return {"message": payload.get("m", ""), "kind": payload.get("k", "notice")}
+
+
+# Onboarding is the one moment someone stares at the grid wondering whether it
+# worked, so it is worth waiting for the first fetch rather than redirecting them
+# to an empty board. Capped, because a slow LeetCode must not hold the request.
+FIRST_SYNC_WAIT_SECONDS = 8
+
+
+async def sync_before_redirect(user: dict[str, Any], settings) -> None:
+    try:
+        await asyncio.wait_for(
+            sync.sync_users([user], settings), FIRST_SYNC_WAIT_SECONDS
+        )
+    except (TimeoutError, asyncio.TimeoutError):
+        # Finish in the background; the board fills in on the next page view.
+        log.info("first sync for user %s is slow, backgrounding it", user["id"])
+        sync.schedule([user], settings)
 
 
 def redirect(url: str, message: str = "", kind: str = "notice") -> RedirectResponse:
@@ -542,8 +560,8 @@ async def start_complete(
     except (store.DuplicateEmail, store.DuplicateLeetCode) as exc:
         return reject(str(exc))
 
-    sync.schedule([user], settings)
-    response = redirect(destination, f"Welcome, {user['display_name']}. Your board is building.")
+    await sync_before_redirect(user, settings)
+    response = redirect(destination, f"Welcome, {user['display_name']}.")
     auth.set_session(response, user["id"])
     response.delete_cookie(SIGNUP_COOKIE, path="/")
     return response
@@ -691,8 +709,8 @@ async def save_welcome(request: Request, leetcode_username: str = Form(default="
         return reject(str(exc))
 
     refreshed = store.get_user(user["id"])
-    sync.schedule([refreshed], settings)
-    return redirect("/", "You are all set. Your board is building.")
+    await sync_before_redirect(refreshed, settings)
+    return redirect("/", "You are all set.")
 
 
 # --------------------------------------------------------------------- Google sign-in

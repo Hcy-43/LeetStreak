@@ -126,6 +126,15 @@ def verify_state(request: Request, state: str, provider: str = "github") -> str:
 
 async def exchange_code(code: str) -> dict[str, Any]:
     settings = get_settings()
+    try:
+        return await _exchange_github(code, settings)
+    except httpx.HTTPError as exc:
+        raise AuthError(f"Could not reach GitHub to finish signing you in: {exc}") from exc
+    except ValueError as exc:  # malformed JSON
+        raise AuthError("GitHub returned something unreadable.") from exc
+
+
+async def _exchange_github(code: str, settings) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=20.0) as client:
         token_response = await client.post(
             GITHUB_TOKEN_URL,
@@ -165,6 +174,15 @@ async def exchange_google_code(code: str) -> dict[str, Any]:
     signature - which keeps a JWT library out of the dependency list.
     """
     settings = get_settings()
+    try:
+        return await _exchange_google(code, settings)
+    except httpx.HTTPError as exc:
+        raise AuthError(f"Could not reach Google to finish signing you in: {exc}") from exc
+    except ValueError as exc:  # malformed JSON
+        raise AuthError("Google returned something unreadable.") from exc
+
+
+async def _exchange_google(code: str, settings) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=20.0) as client:
         token_response = await client.post(
             GOOGLE_TOKEN_URL,
