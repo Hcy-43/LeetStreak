@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from urllib.parse import quote
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -653,34 +654,51 @@ async def start_reset(
 
 
 @app.get("/welcome", response_class=HTMLResponse)
-async def welcome(request: Request):
+async def welcome(request: Request, next: str = Query(default="/")):
     """One question, asked once: which LeetCode account are we watching?
 
     Signing up with email already collects this, so in practice this is where a fresh
-    Google account lands.
+    Google account lands. `next` is threaded through because people arrive here from
+    an invite link, and dropping it would strand them on their own board having
+    forgotten the group they were invited to.
     """
     user = require_user(request)
+    destination = safe_next(next)
     if not user:
-        return redirect("/start?next=/welcome")
+        return redirect(f"/start?next=/welcome")
     if user.get("leetcode_username"):
-        return redirect("/")
-    return render(request, "welcome.html", {"user": user, "error": "", "value": ""})
+        return redirect(destination)
+    return render(
+        request,
+        "welcome.html",
+        {"user": user, "error": "", "value": "", "next_url": destination},
+    )
 
 
 @app.post("/welcome")
-async def save_welcome(request: Request, leetcode_username: str = Form(default="")):
+async def save_welcome(
+    request: Request,
+    leetcode_username: str = Form(default=""),
+    next: str = Form(default="/"),
+):
     user = require_user(request)
     if not user:
         return redirect("/start?next=/welcome")
 
     settings = get_settings()
+    destination = safe_next(next)
     leetcode_username = leetcode_username.strip().lstrip("@")
 
     def reject(message: str):
         return render(
             request,
             "welcome.html",
-            {"user": user, "error": message, "value": leetcode_username},
+            {
+                "user": user,
+                "error": message,
+                "value": leetcode_username,
+                "next_url": destination,
+            },
             status=400,
         )
 
@@ -710,7 +728,7 @@ async def save_welcome(request: Request, leetcode_username: str = Form(default="
 
     refreshed = store.get_user(user["id"])
     await sync_before_redirect(refreshed, settings)
-    return redirect("/", "You are all set.")
+    return redirect(destination, "You are all set.")
 
 
 # --------------------------------------------------------------------- Google sign-in
@@ -760,7 +778,8 @@ async def google_callback(
 
     # New Google accounts have no LeetCode username yet, and the board is useless
     # without one.
-    destination = safe_next(next_url) if user.get("leetcode_username") else "/welcome"
+    onward = safe_next(next_url)
+    destination = onward if user.get("leetcode_username") else f"/welcome?next={quote(onward)}"
     response = redirect(destination, f"Signed in as {user['display_name'] or user['handle']}.")
     auth.set_session(response, user["id"])
     response.delete_cookie(auth.STATE_COOKIE, path="/")
@@ -802,7 +821,8 @@ async def github_callback(
         avatar_url=profile.get("avatar_url") or "",
         github_login=login,
     )
-    destination = next_url if user.get("leetcode_username") else "/welcome"
+    onward = safe_next(next_url)
+    destination = onward if user.get("leetcode_username") else f"/welcome?next={quote(onward)}"
     response = redirect(destination, f"Welcome, {user['display_name'] or user['handle']}.")
     auth.set_session(response, user["id"])
     response.delete_cookie(auth.STATE_COOKIE, path="/")
@@ -1072,7 +1092,8 @@ async def join_group(request: Request, code: str):
     if not group:
         return redirect("/", "That invite link is not valid any more.", "error")
     store.add_member(group["id"], user["id"])
-    destination = f"/g/{group['id']}" if user.get("leetcode_username") else "/welcome"
+    board = f"/g/{group['id']}"
+    destination = board if user.get("leetcode_username") else f"/welcome?next={quote(board)}"
     return redirect(destination, f"You joined '{group['name']}'.")
 
 

@@ -734,6 +734,99 @@ class TestOnboarding:
         assert response.headers["location"] == "/"
 
 
+class TestInviteThenSignUp:
+    """Opening an invite link before you have an account must still land you there."""
+
+    def _invite(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        client.cookies.clear()
+        return group
+
+    def test_an_anonymous_visitor_is_sent_to_sign_in_with_the_invite_kept(self, client):
+        group = self._invite(client)
+        response = client.get(f"/join/{group['invite_code']}", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == f"/start?next=/join/{group['invite_code']}"
+
+    def test_email_signup_returns_to_the_invite(self, client):
+        group = self._invite(client)
+        target = f"/join/{group['invite_code']}"
+
+        client.post("/start", data={"email": "newbie@example.com", "next": target})
+        client.post("/start/verify", data={"code": CODE, "next": target})
+        response = client.post(
+            "/start/complete",
+            data={"password": PASSWORD, "password_confirm": PASSWORD,
+                  "leetcode_username": "newbie", "display_name": "", "next": target},
+            follow_redirects=False,
+        )
+        assert response.headers["location"] == target
+
+    def test_google_signup_keeps_the_invite_through_the_welcome_page(self, client):
+        """The bug: /welcome dropped `next`, stranding people on their own board."""
+        from app import store
+
+        group = self._invite(client)
+        target = f"/join/{group['invite_code']}"
+
+        user = store.upsert_oauth_user(
+            provider="google", subject="g-invited", handle="invited",
+            display_name="Invited", avatar_url="", email="invited@example.com",
+        )
+        sign_in_as(client, user["id"])
+
+        page = client.get(f"/welcome?next={target}")
+        assert f'value="{target}"' in page.text, "the form must carry the destination"
+
+        response = client.post(
+            "/welcome",
+            data={"leetcode_username": "invited", "next": target},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == target
+
+    def test_welcome_defaults_home_without_an_invite(self, client):
+        from app import store
+
+        user = store.upsert_oauth_user(
+            provider="google", subject="g-plain", handle="plain",
+            display_name="Plain", avatar_url="", email="plain@example.com",
+        )
+        sign_in_as(client, user["id"])
+        response = client.post(
+            "/welcome", data={"leetcode_username": "plain"}, follow_redirects=False
+        )
+        assert response.headers["location"] == "/"
+
+    def test_an_offsite_next_is_refused(self, client):
+        """`next` is attacker-controllable via a crafted link."""
+        from app import store
+
+        user = store.upsert_oauth_user(
+            provider="google", subject="g-eve", handle="eve",
+            display_name="Eve", avatar_url="", email="eve@example.com",
+        )
+        sign_in_as(client, user["id"])
+        response = client.post(
+            "/welcome",
+            data={"leetcode_username": "eve", "next": "https://evil.example.com/phish"},
+            follow_redirects=False,
+        )
+        assert response.headers["location"] == "/"
+
+    def test_a_linked_account_opening_welcome_still_honours_the_invite(self, client):
+        group = self._invite(client)
+        target = f"/join/{group['invite_code']}"
+        sign_in(client, "sam")
+        response = client.get(f"/welcome?next={target}", follow_redirects=False)
+        assert response.headers["location"] == target
+
+
 class TestSettingsSimplification:
     def test_the_github_fields_are_gone(self, client):
         sign_in(client, "dana")
