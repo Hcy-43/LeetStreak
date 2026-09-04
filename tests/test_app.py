@@ -776,7 +776,10 @@ class TestSolvedProblems:
         day = day or datetime.now(timezone.utc).date()
         user = store.get_user_by_handle(handle)
         store.save_problems(
-            [{"slug": s, "title": ti, "difficulty": d} for s, ti, d in problems]
+            [
+                {"slug": s, "number": num, "title": ti, "difficulty": d, "tags": tags}
+                for s, ti, d, num, tags in problems
+            ]
         )
         store.record_solved(
             user["id"],
@@ -785,7 +788,7 @@ class TestSolvedProblems:
                     "slug": s,
                     "solved_at": datetime(day.year, day.month, day.day, 12, tzinfo=timezone.utc),
                 }
-                for s, _, _ in problems
+                for s, *_ in problems
             ],
         )
         return user
@@ -802,7 +805,8 @@ class TestSolvedProblems:
 
     def test_todays_problems_show_on_the_board(self, client):
         group = self._group(client)
-        self._seed("sam", ("two-sum", "Two Sum", "Easy"), ("3sum", "3Sum", "Medium"))
+        self._seed("sam", ("two-sum", "Two Sum", "Easy", "1", ["Array", "Hash Table"]),
+            ("3sum", "3Sum", "Medium", "15", ["Array", "Two Pointers"]))
         sign_in(client, "dana")
         body = client.get(f"/g/{group['id']}").text
         assert "Two Sum" in body and "3Sum" in body
@@ -810,7 +814,7 @@ class TestSolvedProblems:
 
     def test_they_link_to_leetcode(self, client):
         group = self._group(client)
-        self._seed("sam", ("two-sum", "Two Sum", "Easy"))
+        self._seed("sam", ("two-sum", "Two Sum", "Easy", "1", ["Array"]))
         sign_in(client, "dana")
         assert "https://leetcode.com/problems/two-sum/" in client.get(f"/g/{group['id']}").text
 
@@ -819,7 +823,7 @@ class TestSolvedProblems:
 
         group = self._group(client)
         yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-        self._seed("sam", ("old-one", "Old One", "Hard"), day=yesterday)
+        self._seed("sam", ("old-one", "Old One", "Hard", "999", ["Graph"]), day=yesterday)
         sign_in(client, "dana")
         assert "Old One" not in client.get(f"/g/{group['id']}").text
 
@@ -827,7 +831,7 @@ class TestSolvedProblems:
         from app import store
 
         group = self._group(client)
-        user = self._seed("sam", ("two-sum", "Two Sum", "Easy"))
+        user = self._seed("sam", ("two-sum", "Two Sum", "Easy", "1", ["Array"]))
         store.set_show_problems(user["id"], False)
         sign_in(client, "dana")
         body = client.get(f"/g/{group['id']}").text
@@ -853,7 +857,7 @@ class TestSolvedProblems:
 
         sign_in(client, "dana")
         for _ in range(3):
-            self._seed("dana", ("two-sum", "Two Sum", "Easy"))
+            self._seed("dana", ("two-sum", "Two Sum", "Easy", "1", ["Array"]))
         user = store.get_user_by_handle("dana")
         with db.connection() as conn:
             n = conn.execute(
@@ -865,15 +869,92 @@ class TestSolvedProblems:
         """Difficulty never changes, so each problem is fetched once, ever."""
         from app import store
 
-        store.save_problems([{"slug": "two-sum", "title": "Two Sum", "difficulty": "Easy"}])
+        store.save_problems([{"slug": "two-sum", "number": "1", "title": "Two Sum",
+                              "difficulty": "Easy", "tags": ["Array"]}])
         known = store.known_problem_slugs(["two-sum", "3sum"])
         assert known == {"two-sum"}
 
     def test_your_own_page_shows_them_too(self, client):
         self._group(client)
-        self._seed("dana", ("valid-anagram", "Valid Anagram", "Easy"))
+        self._seed("dana", ("valid-anagram", "Valid Anagram", "Easy", "242", ["String"]))
         sign_in(client, "dana")
         assert "Valid Anagram" in client.get("/").text
+
+
+    def test_the_problem_number_is_shown(self, client):
+        group = self._group(client)
+        self._seed("sam", ("3sum", "3Sum", "Medium", "15", ["Array", "Two Pointers"]))
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        assert "15." in body
+
+    def test_the_tags_are_shown(self, client):
+        group = self._group(client)
+        self._seed("sam", ("3sum", "3Sum", "Medium", "15", ["Array", "Two Pointers"]))
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        assert "Array" in body and "Two Pointers" in body
+
+    def test_there_is_a_caption(self, client):
+        group = self._group(client)
+        self._seed("sam", ("two-sum", "Two Sum", "Easy", "1", ["Array"]))
+        sign_in(client, "dana")
+        assert "Problems solved today" in client.get(f"/g/{group['id']}").text
+
+    def test_no_caption_when_nothing_was_solved(self, client):
+        group = self._group(client)
+        sign_in(client, "dana")
+        assert "Problems solved today" not in client.get(f"/g/{group['id']}").text
+
+
+class TestMissedDays:
+    """How many days since the group started went by with nothing solved."""
+
+    TODAY = date(2026, 9, 10)
+
+    def test_it_counts_the_gaps(self):
+        from app.streaks import compute_stats
+
+        start = date(2026, 9, 1)
+        solved = {date(2026, 9, 2), date(2026, 9, 3), date(2026, 9, 9)}
+        stats = compute_stats({d: 1 for d in solved}, self.TODAY, streak_since=start)
+        assert stats.missed_days == 6  # nine days elapsed, three of them active
+
+    def test_today_is_not_a_miss_yet(self):
+        """Otherwise everyone opens the board to a fresh miss every morning."""
+        from app.streaks import compute_stats
+
+        start = self.TODAY - timedelta(days=3)
+        every_day = {start + timedelta(days=i): 1 for i in range(3)}  # not today
+        stats = compute_stats(every_day, self.TODAY, streak_since=start)
+        assert stats.missed_days == 0
+
+    def test_a_group_started_today_has_none(self):
+        from app.streaks import compute_stats
+
+        stats = compute_stats({}, self.TODAY, streak_since=self.TODAY)
+        assert stats.missed_days == 0
+
+    def test_solving_nothing_misses_everything(self):
+        from app.streaks import compute_stats
+
+        stats = compute_stats({}, self.TODAY, streak_since=self.TODAY - timedelta(days=5))
+        assert stats.missed_days == 5
+
+    def test_your_own_page_has_no_miss_count(self):
+        """Home is your whole history, which has no start date to count from."""
+        from app.streaks import compute_stats
+
+        assert compute_stats({}, self.TODAY).missed_days == 0
+
+    def test_it_shows_on_the_board(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        backdate_group(group["id"], 5)
+        assert "missed" in client.get(f"/g/{group['id']}").text
 
 
 class TestGroupClock:

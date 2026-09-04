@@ -54,15 +54,24 @@
   </div>
 
   {% if me.solved_today %}
-    <ul class="solved">
-      {% for problem in me.solved_today %}
-        <li>
-          <a href="https://leetcode.com/problems/{{ problem.slug }}/"
-             target="_blank" rel="noopener noreferrer">{{ problem.title }}</a>
-          <span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
-        </li>
-      {% endfor %}
-    </ul>
+    <div class="solved-block">
+      <p class="solved-caption">Problems solved today</p>
+      <ul class="solved">
+        {% for problem in me.solved_today %}
+          <li>
+    <a href="https://leetcode.com/problems/{{ problem.slug }}/"
+       target="_blank" rel="noopener noreferrer">
+      {% if problem.number %}<span class="pnum">{{ problem.number }}.</span>{% endif %}
+      {{ problem.title }}
+    </a>
+    <span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
+    {% if problem.tags %}
+      <span class="ptags">{{ problem.tags | join(' · ') }}</span>
+    {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
   {% endif %}
 
   <div class="legend">

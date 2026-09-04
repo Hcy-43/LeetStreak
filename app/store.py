@@ -368,14 +368,25 @@ def known_problem_slugs(slugs: Iterable[str]) -> set[str]:
 
 
 def save_problems(problems: Iterable[dict[str, str]]) -> None:
-    rows = [(p["slug"], p["title"], p.get("difficulty") or "Unknown") for p in problems]
+    rows = [
+        (
+            p["slug"],
+            p.get("number") or "",
+            p["title"],
+            p.get("difficulty") or "Unknown",
+            list(p.get("tags") or []),
+        )
+        for p in problems
+    ]
     if not rows:
         return
     with db.transaction() as conn, conn.cursor() as cursor:
         cursor.executemany(
-            """INSERT INTO problems (slug, title, difficulty) VALUES (%s, %s, %s)
+            """INSERT INTO problems (slug, number, title, difficulty, tags)
+               VALUES (%s, %s, %s, %s, %s)
                ON CONFLICT (slug) DO UPDATE SET
-                   title = excluded.title, difficulty = excluded.difficulty""",
+                   number = excluded.number, title = excluded.title,
+                   difficulty = excluded.difficulty, tags = excluded.tags""",
             rows,
         )
 
@@ -405,7 +416,7 @@ def problems_on(user_ids: Iterable[int], day: date) -> dict[int, list[dict[str, 
         return {}
     with db.connection() as conn:
         rows = conn.execute(
-            """SELECT s.user_id, p.slug, p.title, p.difficulty
+            """SELECT s.user_id, p.slug, p.number, p.title, p.difficulty, p.tags
                  FROM solved_problems s
                  JOIN problems p ON p.slug = s.slug
                  JOIN users u ON u.id = s.user_id
@@ -416,7 +427,13 @@ def problems_on(user_ids: Iterable[int], day: date) -> dict[int, list[dict[str, 
     out: dict[int, list[dict[str, str]]] = {}
     for row in rows:
         out.setdefault(row["user_id"], []).append(
-            {"slug": row["slug"], "title": row["title"], "difficulty": row["difficulty"]}
+            {
+                "slug": row["slug"],
+                "number": row["number"],
+                "title": row["title"],
+                "difficulty": row["difficulty"],
+                "tags": list(row["tags"] or []),
+            }
         )
     return out
 

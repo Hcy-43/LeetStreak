@@ -102,8 +102,11 @@ CREATE TABLE IF NOT EXISTS email_codes (
 -- Problem metadata. Difficulty never changes, so this is fetched once per slug.
 CREATE TABLE IF NOT EXISTS problems (
     slug       TEXT PRIMARY KEY,
+    number     TEXT NOT NULL DEFAULT '',
     title      TEXT NOT NULL,
-    difficulty TEXT NOT NULL DEFAULT 'Unknown'
+    difficulty TEXT NOT NULL DEFAULT 'Unknown',
+    -- Topic tags, newest metadata LeetCode gives us. Stored as a plain array.
+    tags       TEXT[] NOT NULL DEFAULT '{}'
 );
 
 -- What each person solved, one row per problem per day. LeetCode only exposes the
@@ -158,6 +161,11 @@ MIGRATIONS: list[str] = [
 
     CREATE INDEX IF NOT EXISTS idx_solved_user_day
         ON solved_problems (user_id, solved_on DESC);
+    """,
+    # Problem number and topic tags.
+    """
+    ALTER TABLE problems ADD COLUMN IF NOT EXISTS number TEXT NOT NULL DEFAULT '';
+    ALTER TABLE problems ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
     """,
 ]
 

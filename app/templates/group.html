@@ -95,6 +95,10 @@
           <span class="value">{{ member.stats.active_days }}</span>
           <span class="label">active day{{ '' if member.stats.active_days == 1 else 's' }}</span>
         </div>
+        <div class="stat {{ 'missed' if member.stats.missed_days }}">
+          <span class="value">{{ member.stats.missed_days }}</span>
+          <span class="label">missed</span>
+        </div>
       </div>
 
       <div class="member-graph">
@@ -103,15 +107,24 @@
                         ~ member.stats.total_solved ~ ' submissions in this window' %}
           {% include "_heatmap.html" %}
           {% if member.solved_today %}
-            <ul class="solved">
-              {% for problem in member.solved_today %}
-                <li>
-                  <a href="https://leetcode.com/problems/{{ problem.slug }}/"
-                     target="_blank" rel="noopener noreferrer">{{ problem.title }}</a>
-                  <span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
-                </li>
-              {% endfor %}
-            </ul>
+            <div class="solved-block">
+              <p class="solved-caption">Problems solved today</p>
+              <ul class="solved">
+                {% for problem in member.solved_today %}
+                  <li>
+                    <a href="https://leetcode.com/problems/{{ problem.slug }}/"
+                       target="_blank" rel="noopener noreferrer">
+                      {% if problem.number %}<span class="pnum">{{ problem.number }}.</span>{% endif %}
+                      {{ problem.title }}
+                    </a>
+                    <span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
+                    {% if problem.tags %}
+                      <span class="ptags">{{ problem.tags | join(' · ') }}</span>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
           {% endif %}
         {% endwith %}
       </div>

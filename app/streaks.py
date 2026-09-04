@@ -28,6 +28,21 @@ class Stats:
     # or it breaks at midnight.
     at_risk: bool
     last_active: date | None
+    # Days since the group started with nothing solved. Today is excluded: it is
+    # not a missed day until it is over.
+    missed_days: int = 0
+
+
+def _missed(since: date | None, today: date, active: set[date]) -> int:
+    """Days from `since` up to yesterday with nothing solved.
+
+    Today is deliberately excluded - it is still in progress, and counting it would
+    show everyone a miss every morning.
+    """
+    if since is None or since >= today:
+        return 0
+    span = (today - since).days  # since .. yesterday, inclusive
+    return span - sum(1 for i in range(span) if since + timedelta(days=i) in active)
 
 
 def compute_stats(
@@ -50,7 +65,7 @@ def compute_stats(
     """
     active = {day for day, count in days.items() if count > 0}
     if not active:
-        return Stats(0, 0, 0, 0, False, False, None)
+        return Stats(0, 0, 0, 0, False, False, None, _missed(streak_since, today, set()))
 
     in_window = (
         {day for day in active if day >= since} if since is not None else active
@@ -92,6 +107,7 @@ def compute_stats(
         done_today=done_today,
         at_risk=current > 0 and not done_today,
         last_active=max(active),
+        missed_days=_missed(streak_since, today, active),
     )
 
 

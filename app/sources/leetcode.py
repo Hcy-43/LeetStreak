@@ -59,10 +59,12 @@ query recentAcSubmissions($username: String!, $limit: Int!) {
 """
 
 DIFFICULTY_QUERY = """
-query questionDifficulty($titleSlug: String!) {
+query questionDetail($titleSlug: String!) {
   question(titleSlug: $titleSlug) {
+    questionFrontendId
     title
     difficulty
+    topicTags { name }
   }
 }
 """
@@ -207,11 +209,14 @@ async def fetch_recent_solved(
 
 
 async def fetch_difficulty(client: httpx.AsyncClient, slug: str) -> dict[str, str]:
-    """Title and difficulty for one problem. Never changes, so cache it forever."""
+    """Number, title, difficulty and tags. None of it changes, so cache it forever."""
     payload = await _post(client, DIFFICULTY_QUERY, {"titleSlug": slug}, subject=slug)
     question = payload.get("question") or {}
+    tags = [t.get("name") for t in (question.get("topicTags") or []) if t.get("name")]
     return {
         "slug": slug,
+        "number": (question.get("questionFrontendId") or "").strip(),
         "title": question.get("title") or slug,
         "difficulty": question.get("difficulty") or "Unknown",
+        "tags": tags,
     }
