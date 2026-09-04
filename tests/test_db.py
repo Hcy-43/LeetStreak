@@ -130,3 +130,38 @@ class TestPool:
         assert db.normalise_dsn(wanted) == wanted
         # A lone quote is not a matched pair and must not be silently eaten.
         assert db.normalise_dsn('"' + wanted) == '"' + wanted
+
+
+class TestPoolSizing:
+    """A background refresh must never take the last connection from a page load."""
+
+    def test_sync_concurrency_leaves_headroom(self, monkeypatch):
+        from app import db, sync
+
+        for pool_max, expected in [(3, 1), (4, 2), (10, 4), (2, 1)]:
+            monkeypatch.setenv("DB_POOL_MAX", str(pool_max))
+            assert db.max_connections() == max(2, pool_max)
+            headroom = max(1, min(4, db.max_connections() - 2))
+            assert headroom == expected, f"pool {pool_max} -> {headroom}"
+
+    def test_the_pool_never_shrinks_below_two(self, monkeypatch):
+        """One connection for the request, one spare, whatever the env says."""
+        from app import db
+
+        monkeypatch.setenv("DB_POOL_MAX", "1")
+        assert db.max_connections() == 2
+        monkeypatch.setenv("DB_POOL_MAX", "0")
+        assert db.max_connections() == 2
+
+    def test_a_stale_connection_is_replaced_not_served(self):
+        """Neon closes idle connections; the pool must notice before we use one."""
+        import psycopg
+
+        from app import db
+
+        with db.connection() as conn:
+            pid = conn.execute("select pg_backend_pid() as p").fetchone()["p"]
+        with psycopg.connect(db.normalise_dsn(db._dsn)) as killer:
+            killer.execute("select pg_terminate_backend(%s)", (pid,))
+        with db.connection() as conn:
+            assert conn.execute("select 1 as n").fetchone()["n"] == 1

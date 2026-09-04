@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 import httpx
 
-from . import store
+from . import db, store
 from .config import Settings
 from .sources import SourceError, github, leetcode
 
@@ -131,6 +131,9 @@ async def sync_users(
     if not claimed:
         return {}
 
+    # Never let a background refresh take every connection: a page request that
+    # cannot get one waits for the pool timeout and then fails outright.
+    concurrency = max(1, min(concurrency, db.max_connections() - 2))
     semaphore = asyncio.Semaphore(concurrency)
     results: dict[int, dict[str, str]] = {}
 

@@ -47,7 +47,8 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      # Neon's free tier allows few connections, and a sleeping free service can
-      # leave some behind.
+      # Must stay comfortably above the sync concurrency, or a background refresh
+      # takes every connection and page loads fail with a pool timeout. Neon's free
+      # compute allows around a hundred, so this is still conservative.
       - key: DB_POOL_MAX
-        value: "3"
+        value: "10"

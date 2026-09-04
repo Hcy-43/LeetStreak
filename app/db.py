@@ -118,6 +118,10 @@ _pool: ConnectionPool | None = None
 _dsn: str | None = None
 
 
+def max_connections() -> int:
+    return max(2, int(os.environ.get("DB_POOL_MAX", "10")))
+
+
 def normalise_dsn(url: str) -> str:
     """Clean up a connection string copied from a provider's dashboard.
 
@@ -144,13 +148,19 @@ def configure(url: str) -> None:
         return
     close()
     _dsn = url
-    # Small on purpose: a hobby app on serverless Postgres has a low connection
-    # ceiling, and idle connections there are not free.
+    # Sized so background work can never starve a page request. Neon's free
+    # compute allows around a hundred connections, so ten is conservative without
+    # being so tight that a group refresh saturates the pool and page loads start
+    # timing out - which reads to the person waiting as Internal Server Error.
     _pool = ConnectionPool(
         url,
         min_size=1,
-        max_size=int(os.environ.get("DB_POOL_MAX", "5")),
+        max_size=max_connections(),
         timeout=15.0,
+        # A serverless Postgres closes idle connections when the compute suspends.
+        # Recycle ours first, and verify one before handing it out.
+        max_idle=180.0,
+        check=ConnectionPool.check_connection,
         kwargs={"row_factory": dict_row},
         open=True,
     )
