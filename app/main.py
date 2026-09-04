@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
-from urllib.parse import quote
+import secrets
+from urllib.parse import quote, unquote_plus
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -1162,14 +1164,45 @@ async def join_group(request: Request, code: str):
 # ----------------------------------------------------------------------------- api
 
 
+async def cron_authorised(request: Request, settings) -> bool:
+    """Accept the shared secret from wherever the scheduler can put it.
+
+    Custom headers are the tidy way, but not every scheduler's free tier exposes
+    them - cron-job.org shows a request-body box and little else. So the token may
+    arrive as an Authorization header, a `token` field in a JSON or form body, or
+    the raw body on its own. Never as a query parameter: those end up in access
+    logs and browser history.
+    """
+    header = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    candidates = [header]
+
+    raw = (await request.body()).decode("utf-8", "replace").strip()
+    if raw:
+        candidates.append(raw)
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict) and isinstance(parsed.get("token"), str):
+            candidates.append(parsed["token"].strip())
+        if "=" in raw and "\n" not in raw:
+            for pair in raw.split("&"):
+                key, _, value = pair.partition("=")
+                if key.strip() == "token":
+                    candidates.append(unquote_plus(value).strip())
+
+    return any(
+        candidate and secrets.compare_digest(candidate, settings.cron_token)
+        for candidate in candidates
+    )
+
+
 @app.post("/api/cron/sync")
 async def cron_sync(request: Request):
     settings = get_settings()
     if not settings.cron_token:
         return JSONResponse({"error": "CRON_TOKEN is not configured"}, status_code=404)
-    header = request.headers.get("authorization", "")
-    supplied = header.removeprefix("Bearer ").strip()
-    if supplied != settings.cron_token:
+    if not await cron_authorised(request, settings):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     users = store.all_trackable_users()
@@ -1234,7 +1267,7 @@ async def cron_nudge(request: Request):
     settings = get_settings()
     if not settings.cron_token:
         return JSONResponse({"error": "CRON_TOKEN is not configured"}, status_code=404)
-    if request.headers.get("authorization", "").removeprefix("Bearer ").strip() != settings.cron_token:
+    if not await cron_authorised(request, settings):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     sent: list[str] = []

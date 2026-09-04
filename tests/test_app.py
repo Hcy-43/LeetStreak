@@ -1605,6 +1605,58 @@ class TestDailyNudge:
         assert self._fire(client).status_code == 404
 
 
+class TestCronAuthorisation:
+    """Not every scheduler's free tier lets you set a custom header."""
+
+    def setup_token(self, monkeypatch):
+        from app import config
+
+        monkeypatch.setenv("CRON_TOKEN", "cron-secret")
+        config.get_settings.cache_clear()
+
+    def test_the_authorization_header_works(self, client, monkeypatch):
+        self.setup_token(monkeypatch)
+        r = client.post("/api/cron/sync", headers={"Authorization": "Bearer cron-secret"})
+        assert r.status_code == 200
+
+    def test_the_raw_body_works(self, client, monkeypatch):
+        """cron-job.org offers a request-body box and no headers."""
+        self.setup_token(monkeypatch)
+        r = client.post("/api/cron/sync", content="cron-secret")
+        assert r.status_code == 200
+
+    def test_a_json_body_works(self, client, monkeypatch):
+        self.setup_token(monkeypatch)
+        r = client.post("/api/cron/sync", json={"token": "cron-secret"})
+        assert r.status_code == 200
+
+    def test_a_form_body_works(self, client, monkeypatch):
+        self.setup_token(monkeypatch)
+        r = client.post("/api/cron/sync", content="token=cron-secret",
+                        headers={"Content-Type": "application/x-www-form-urlencoded"})
+        assert r.status_code == 200
+
+    def test_whitespace_around_the_token_is_forgiven(self, client, monkeypatch):
+        self.setup_token(monkeypatch)
+        assert client.post("/api/cron/sync", content="  cron-secret\n").status_code == 200
+
+    def test_a_wrong_token_is_still_refused(self, client, monkeypatch):
+        self.setup_token(monkeypatch)
+        assert client.post("/api/cron/sync", content="nope").status_code == 401
+        assert client.post("/api/cron/sync", json={"token": "nope"}).status_code == 401
+        assert client.post("/api/cron/sync").status_code == 401
+
+    def test_a_query_parameter_is_not_accepted(self, client, monkeypatch):
+        """Tokens in URLs end up in access logs and browser history."""
+        self.setup_token(monkeypatch)
+        assert client.post("/api/cron/sync?token=cron-secret").status_code == 401
+
+    def test_both_endpoints_use_the_same_rule(self, client, monkeypatch):
+        self.setup_token(monkeypatch)
+        assert client.post("/api/cron/nudge", content="cron-secret").status_code == 200
+        assert client.post("/api/cron/nudge", content="nope").status_code == 401
+
+
 class TestCron:
     def test_cron_endpoint_is_off_without_a_token(self, client):
         response = client.post("/api/cron/sync")

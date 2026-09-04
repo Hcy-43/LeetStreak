@@ -155,7 +155,12 @@ it off in their settings.
 curl -X POST https://YOUR-DOMAIN/api/cron/nudge -H "Authorization: Bearer $CRON_TOKEN"
 ```
 
-Add it on cron-job.org next to the keep-alive ping, with an `Authorization` header.
+Add it on cron-job.org next to the keep-alive ping.
+
+The token can go in an `Authorization: Bearer …` header, or — if your scheduler's free
+tier has no header fields, as cron-job.org's does not — simply paste the token on its
+own into the **request body** box. Both are checked. It is deliberately *not* accepted
+as a query parameter, because those end up in access logs.
 
 ## When something is wrong
 
