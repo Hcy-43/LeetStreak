@@ -355,6 +355,13 @@ def add_member(group_id: int, user_id: int) -> None:
         )
 
 
+def set_group_timezone(group_id: int, timezone_name: str) -> None:
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE groups SET timezone = %s WHERE id = %s", (timezone_name, group_id)
+        )
+
+
 def remove_member(group_id: int, user_id: int) -> None:
     with db.transaction() as conn:
         conn.execute(

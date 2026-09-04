@@ -216,13 +216,30 @@ def safe_next(value: str | None) -> str:
     return value if value and value.startswith("/") and not value.startswith("//") else "/"
 
 
-def viewer_today(user: dict[str, Any] | None):
-    name = (user or {}).get("timezone") or "UTC"
+def today_in(timezone_name: str | None):
+    """The current date on a given clock, falling back to UTC on nonsense."""
     try:
-        zone = ZoneInfo(name)
+        zone = ZoneInfo(timezone_name or "UTC")
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo("UTC")
     return datetime.now(zone).date()
+
+
+def group_today(group: dict[str, Any] | None):
+    """A group board runs on the group's clock, so every member is measured against
+    the same midnight. Otherwise "4 of 5 solved today" means something different to
+    each person reading it."""
+    return today_in((group or {}).get("timezone"))
+
+
+def personal_today(user: dict[str, Any] | None):
+    """Your own page has no group to borrow a clock from. Use your first group's,
+    so the two pages agree, and UTC before you have joined one - which is also the
+    boundary LeetCode's own calendar uses."""
+    if user:
+        for group in store.groups_for_user(user["id"]):
+            return today_in(group.get("timezone"))
+    return today_in("UTC")
 
 
 def require_user(request: Request) -> dict[str, Any] | None:
@@ -260,7 +277,7 @@ async def home(request: Request, range: str = Query(default="1y")):
 
     sync.refresh_stale_in_background([user], settings)
 
-    me = board.build_board([user], viewer_today(user), range).members[0]
+    me = board.build_board([user], personal_today(user), range).members[0]
     return render(
         request,
         "home.html",
@@ -860,7 +877,6 @@ async def settings_page(request: Request):
         "settings.html",
         {
             "user": user,
-            "timezones": timezone_choices(user.get("timezone")),
             "sync_states": states,
             "providers": store.identity_providers(user["id"]),
         },
@@ -872,7 +888,6 @@ async def save_settings(
     request: Request,
     display_name: str = Form(default=""),
     leetcode_username: str = Form(default=""),
-    timezone_name: str = Form(default="UTC", alias="timezone"),
 ):
     user = require_user(request)
     if not user:
@@ -889,9 +904,6 @@ async def save_settings(
             "/settings", "Enter your LeetCode username - it cannot be blank.", "error"
         )
 
-    if timezone_name not in available_timezones():
-        return redirect("/settings", f"Unknown timezone '{timezone_name}'.", "error")
-
     if leetcode_username and leetcode_username != user.get("leetcode_username"):
         try:
             async with httpx.AsyncClient() as client:
@@ -907,7 +919,7 @@ async def save_settings(
             leetcode_username=leetcode_username,
             github_login=user.get("github_login", ""),
             github_repo=user.get("github_repo", ""),
-            timezone_name=timezone_name,
+            timezone_name=user.get("timezone") or "UTC",
         )
     except store.DuplicateLeetCode as exc:
         return redirect("/settings", str(exc), "error")
@@ -986,7 +998,7 @@ async def group_board(
     started = store.parse_iso(group["created_at"])
     data = board.build_board(
         members,
-        viewer_today(user),
+        group_today(group),
         range,
         since=started.date() if started else None,
     )
@@ -1001,6 +1013,7 @@ async def group_board(
             "invite_url": invite_url,
             "is_owner": group["owner_id"] == user["id"],
             "range_options": board.RANGE_OPTIONS,
+            "timezones": timezone_choices(group.get("timezone")),
         },
     )
 
@@ -1026,6 +1039,23 @@ async def rename_group(request: Request, group_id: int, name: str = Form(...)):
         return redirect(f"/g/{group_id}", "Group name cannot be empty.", "error")
     store.rename_group(group_id, cleaned)
     return redirect(f"/g/{group_id}", "Group renamed.")
+
+
+@app.post("/g/{group_id}/timezone")
+async def set_group_timezone(
+    request: Request, group_id: int, timezone_name: str = Form(alias="timezone")
+):
+    user = require_user(request)
+    group = store.get_group(group_id)
+    if not user or not group or group["owner_id"] != user["id"]:
+        return redirect("/", "Only the group owner can do that.", "error")
+    if timezone_name not in available_timezones():
+        return redirect(f"/g/{group_id}", f"Unknown timezone '{timezone_name}'.", "error")
+    store.set_group_timezone(group_id, timezone_name)
+    return redirect(
+        f"/g/{group_id}",
+        f"The board now runs on {timezone_name} time for everyone.",
+    )
 
 
 @app.post("/g/{group_id}/invite/rotate")
@@ -1143,7 +1173,7 @@ async def group_json(
     started = store.parse_iso(group["created_at"]) if group else None
     data = board.build_board(
         store.members_of(group_id),
-        viewer_today(user),
+        group_today(group),
         range,
         since=started.date() if started else None,
     )

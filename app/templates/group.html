@@ -11,6 +11,7 @@
       {% if board.since %}
         &middot; since {{ board.since.strftime('%-d %b %Y') }}
       {% endif %}
+      &middot; {{ group.timezone }} time
     </p>
   </div>
   <div class="page-actions">
@@ -143,6 +144,15 @@
       <form method="post" action="/g/{{ group.id }}/rename" class="inline-form">
         <input type="text" name="name" value="{{ group.name }}" maxlength="60" aria-label="Group name">
         <button type="submit" class="btn ghost">Rename</button>
+      </form>
+      <form method="post" action="/g/{{ group.id }}/timezone" class="inline-form">
+        <label class="sr-only" for="group-tz">Group timezone</label>
+        <select id="group-tz" name="timezone">
+          {% for zone in timezones %}
+            <option value="{{ zone }}" {{ 'selected' if zone == group.timezone }}>{{ zone }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn ghost">Set clock</button>
       </form>
       <form method="post" action="/g/{{ group.id }}/invite/rotate" class="inline"
             data-confirm="Generate a new invite link? The current one stops working.">

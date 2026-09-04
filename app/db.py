@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS groups (
     name        TEXT    NOT NULL,
     invite_code TEXT    NOT NULL UNIQUE,
     owner_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    -- The board's clock. A group needs one shared definition of "today", or
+    -- "4 of 5 solved today" means different things to different members.
+    timezone    TEXT    NOT NULL DEFAULT 'UTC',
     created_at  TEXT    NOT NULL
 );
 
@@ -102,7 +105,11 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 """
 
-MIGRATIONS: list[str] = [SCHEMA]
+MIGRATIONS: list[str] = [
+    SCHEMA,
+    # Deployed databases predate the group clock.
+    "ALTER TABLE groups ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';",
+]
 
 TABLES = (
     "sync_state",

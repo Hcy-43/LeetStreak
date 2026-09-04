@@ -762,6 +762,87 @@ class TestPublicPages:
         assert 'href="/terms"' in body
 
 
+class TestGroupClock:
+    """A board needs one shared "today", or the count means different things to
+    different members."""
+
+    def _group(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        return store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+
+    def test_a_new_group_starts_on_utc(self, client):
+        assert self._group(client)["timezone"] == "UTC"
+
+    def test_the_owner_can_set_the_clock(self, client):
+        from app import store
+
+        group = self._group(client)
+        response = client.post(
+            f"/g/{group['id']}/timezone", data={"timezone": "Asia/Taipei"},
+            follow_redirects=True,
+        )
+        assert "Asia/Taipei time" in response.text
+        assert store.get_group(group["id"])["timezone"] == "Asia/Taipei"
+
+    def test_a_member_cannot(self, client):
+        from app import store
+
+        group = self._group(client)
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+        client.post(f"/g/{group['id']}/timezone", data={"timezone": "Asia/Taipei"})
+        assert store.get_group(group["id"])["timezone"] == "UTC"
+
+    def test_a_bogus_zone_is_refused(self, client):
+        from app import store
+
+        group = self._group(client)
+        response = client.post(
+            f"/g/{group['id']}/timezone", data={"timezone": "Mars/Olympus"},
+            follow_redirects=True,
+        )
+        assert "Unknown timezone" in response.text
+        assert store.get_group(group["id"])["timezone"] == "UTC"
+
+    def test_the_board_says_which_clock_it_runs_on(self, client):
+        group = self._group(client)
+        client.post(f"/g/{group['id']}/timezone", data={"timezone": "Asia/Tokyo"})
+        assert "Asia/Tokyo time" in client.get(f"/g/{group['id']}").text
+
+    def test_the_clock_decides_the_board_date(self, client, monkeypatch):
+        """Everyone sees the group's today, not their own."""
+        from datetime import date
+
+        from app import main, store
+
+        group = self._group(client)
+        store.set_group_timezone(group["id"], "Pacific/Kiritimati")  # UTC+14
+        early = main.group_today(store.get_group(group["id"]))
+        store.set_group_timezone(group["id"], "Pacific/Niue")  # UTC-11
+        late = main.group_today(store.get_group(group["id"]))
+        assert isinstance(early, date) and isinstance(late, date)
+        assert (early - late).days in (0, 1), "the two ends of the world differ by a day"
+
+    def test_your_own_page_borrows_your_group_clock(self, client):
+        from app import main, store
+
+        group = self._group(client)
+        store.set_group_timezone(group["id"], "Asia/Taipei")
+        user = store.get_user_by_handle("dana")
+        assert main.personal_today(user) == main.today_in("Asia/Taipei")
+
+    def test_without_a_group_your_page_uses_utc(self, client):
+        """UTC is also the boundary LeetCode's own calendar uses."""
+        from app import main, store
+
+        sign_in(client, "sam")
+        user = store.get_user_by_handle("sam")
+        assert main.personal_today(user) == main.today_in("UTC")
+
+
 class TestInviteThenSignUp:
     """Opening an invite link before you have an account must still land you there."""
 
@@ -863,43 +944,11 @@ class TestSettingsSimplification:
         assert 'name="github_repo"' not in body
         assert "solutions repo" not in body.lower()
 
-    def test_timezone_is_a_real_dropdown(self, client):
+    def test_the_timezone_field_is_gone(self, client):
+        """The clock belongs to the group now, not the person."""
         sign_in(client, "dana")
         body = client.get("/settings").text
-        assert '<select id="timezone" name="timezone">' in body
-        assert "<datalist" not in body
-        assert "Asia/Taipei" in body
-
-    def test_the_current_zone_is_preselected(self, client):
-        sign_in(client, "dana")
-        client.post(
-            "/settings",
-            data={"display_name": "", "leetcode_username": "dana", "timezone": "Asia/Taipei"},
-        )
-        body = client.get("/settings").text
-        assert '<option value="Asia/Taipei" selected>' in body
-
-    def test_an_unlisted_zone_still_appears(self, client):
-        """A zone set before the short list existed must not vanish from the dropdown."""
-        from app import store
-
-        sign_in(client, "dana")
-        user = store.get_user_by_email("dana@example.com")
-        store.update_profile(
-            user["id"], display_name="Dana", leetcode_username="dana",
-            github_login="", github_repo="", timezone_name="Pacific/Chatham",
-        )
-        body = client.get("/settings").text
-        assert '<option value="Pacific/Chatham" selected>' in body
-
-    def test_a_bogus_zone_is_still_refused(self, client):
-        sign_in(client, "dana")
-        response = client.post(
-            "/settings",
-            data={"display_name": "", "leetcode_username": "dana", "timezone": "Mars/Olympus"},
-            follow_redirects=True,
-        )
-        assert "Unknown timezone" in response.text
+        assert 'name="timezone"' not in body
 
     def test_saving_settings_keeps_stored_github_values(self, client):
         """The fields are hidden, not wiped - re-enabling the source must not cost data."""

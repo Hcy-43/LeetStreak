@@ -26,17 +26,6 @@
       Your submission calendar has to be public, which it is by default.
     </p>
 
-    <label for="timezone">Timezone</label>
-    <select id="timezone" name="timezone">
-      {% for zone in timezones %}
-        <option value="{{ zone }}" {{ 'selected' if zone == user.timezone }}>{{ zone }}</option>
-      {% endfor %}
-    </select>
-    <p class="hint">
-      Decides when your day rolls over, so &ldquo;solved today&rdquo; and your streak are
-      counted against your own midnight rather than someone else&rsquo;s.
-    </p>
-
     <button type="submit" class="btn">Save and refresh</button>
   </form>
 </section>

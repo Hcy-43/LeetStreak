@@ -51,9 +51,13 @@ data behind the heatmap on your profile. Needs nothing but your username, and yo
 calendar is public by default.
 
 LeetCode reports its calendar in UTC and we store it exactly as given, rather than
-inventing our own boundary — so a day here matches what leetcode.com shows you. Your
-timezone setting decides when *your* day rolls over for the streak count and the "solved
-today" line, so everyone on a board is measured against their own midnight.
+inventing our own boundary — so a day here matches what leetcode.com shows you.
+
+**The clock belongs to the group, not the person.** Each group has a timezone, set by
+its owner, and every member's streak and "solved today" is measured against that one
+midnight. Otherwise "4 of 5 solved today" would mean something different to each person
+reading it. Your own home page borrows the clock from your first group, and falls back
+to UTC before you have joined one.
 
 > **GitHub is parked.** An earlier version could also count commits from your GitHub
 > contribution graph or a LeetHub/LeetSync solutions repo. That is switched off to keep
