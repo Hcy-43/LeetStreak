@@ -396,6 +396,9 @@ input:disabled { color: var(--muted); background: var(--surface); cursor: not-al
 
 .today-list li.done { border-color: var(--l3); background: color-mix(in srgb, var(--l3) 10%, var(--surface-2)); }
 .today-list li.done .today-state { color: var(--l4); font-weight: 600; }
+.streak-flag { display: inline-flex; align-items: baseline; gap: .28rem; }
+/* The flame carries no information a screen reader needs - the number does. */
+.flame { font-size: .95em; line-height: 1; }
 :root[data-theme="dark"] .today-list li.done .today-state { color: var(--l4); }
 .today-list li.pending .avatar { opacity: .55; }
 .today-list li.pending .today-name { color: var(--muted); }

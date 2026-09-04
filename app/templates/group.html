@@ -44,7 +44,8 @@
             <span class="today-name">{{ member.name }}</span>
             <span class="today-state">
               {% if member.stats.done_today %}
-                <span class="tick" aria-hidden="true">&#10003;</span> solved today
+                <span class="streak-flag">{{ member.stats.current_streak }}-day
+                  streak<span class="flame" aria-hidden="true">&#128293;</span></span>
               {% elif member.stats.at_risk %}
                 <span class="at-risk-flag">{{ member.stats.current_streak }}-day streak at risk</span>
               {% else %}

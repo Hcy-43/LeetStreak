@@ -1056,6 +1056,40 @@ class TestAtRisk:
         group = self._group_with_at_risk(client)
         assert 'class="at-risk"' in client.get(f"/g/{group['id']}").text
 
+    def test_solving_today_shows_the_streak_with_a_flame(self, client):
+        from datetime import timedelta
+
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        backdate_group(group["id"], 30)
+        today = utc_today()
+        store.replace_activity(
+            store.get_user_by_handle("dana")["id"], "leetcode",
+            {today - timedelta(days=i): 1 for i in range(7)},  # includes today
+        )
+        body = client.get(f"/g/{group['id']}").text
+        assert "7-day" in body and "&#128293;" in body
+        assert "at risk" not in body
+
+    def test_the_flame_is_hidden_from_screen_readers(self, client):
+        """The number carries the meaning; the emoji is decoration."""
+        from datetime import timedelta
+
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        backdate_group(group["id"], 30)
+        store.replace_activity(
+            store.get_user_by_handle("dana")["id"], "leetcode", {utc_today(): 1}
+        )
+        body = client.get(f"/g/{group['id']}").text
+        assert 'class="flame" aria-hidden="true"' in body
+
     def test_someone_with_no_streak_just_says_not_yet(self, client):
         from app import store
 
