@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS users (
     display_name      TEXT    NOT NULL DEFAULT '',
     avatar_url        TEXT    NOT NULL DEFAULT '',
     leetcode_username TEXT    NOT NULL DEFAULT '',
+    -- Evening reminder when you have not solved and your group has.
+    nudge_enabled     BOOLEAN NOT NULL DEFAULT true,
+    last_nudged_on    TEXT    NOT NULL DEFAULT '',
     github_login      TEXT    NOT NULL DEFAULT '',
     github_repo       TEXT    NOT NULL DEFAULT '',
     timezone          TEXT    NOT NULL DEFAULT 'UTC',
@@ -109,6 +112,10 @@ MIGRATIONS: list[str] = [
     SCHEMA,
     # Deployed databases predate the group clock.
     "ALTER TABLE groups ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';",
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS nudge_enabled BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_nudged_on TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 TABLES = (

@@ -138,12 +138,24 @@ Restore with `psql "$DATABASE_URL" < backup.sql`. Neon's free tier does not keep
 long backup history, so if the group matters to you, run this occasionally.
 
 **Refreshing activity.** The app re-syncs anyone whose data is stale when their board
-is viewed, so a cron job is optional. If you want the boards warm before people look,
-set `CRON_TOKEN` and hit the endpoint on a schedule:
+is viewed, so this one is optional. Set `CRON_TOKEN` and hit it on a schedule if you
+want boards warm before people look:
 
 ```bash
 curl -X POST https://YOUR-DOMAIN/api/cron/sync -H "Authorization: Bearer $CRON_TOKEN"
 ```
+
+**Daily reminders.** This one is worth setting up: it is what makes the app reach
+people rather than waiting to be opened. Call it **hourly** — the app works out which
+groups are at their own local evening (`NUDGE_HOUR`, default 20:00) and emails only
+members who have not solved yet. Nobody is emailed twice in a day, and anyone can turn
+it off in their settings.
+
+```bash
+curl -X POST https://YOUR-DOMAIN/api/cron/nudge -H "Authorization: Bearer $CRON_TOKEN"
+```
+
+Add it on cron-job.org next to the keep-alive ping, with an `Authorization` header.
 
 ## When something is wrong
 

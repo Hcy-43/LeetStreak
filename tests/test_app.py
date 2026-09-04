@@ -1499,6 +1499,112 @@ class TestProductionGuards:
         assert code == 200
 
 
+class TestDailyNudge:
+    """The app is useless if nobody remembers to open it."""
+
+    def _group_at_hour(self, client, hour, monkeypatch):
+        """A group whose local clock is currently the nudge hour."""
+        from app import main, store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+        monkeypatch.setenv("CRON_TOKEN", "cron-secret")
+        from app import config
+
+        config.get_settings.cache_clear()
+        monkeypatch.setattr(main, "hour_in", lambda tz: hour)
+        return store.get_group(group["id"])
+
+    def _fire(self, client, token="cron-secret"):
+        return client.post(
+            "/api/cron/nudge", headers={"Authorization": f"Bearer {token}"}
+        )
+
+    @staticmethod
+    def _nudges(client):
+        """client.sent also holds the signup verification mail."""
+        return [m for m in client.sent if "not solved today" in m["subject"]]
+
+    def test_it_emails_someone_who_has_not_solved(self, client, monkeypatch):
+        self._group_at_hour(client, main_hour := 20, monkeypatch)
+        from app import main
+
+        monkeypatch.setattr(main, "NUDGE_HOUR", main_hour)
+        seed_activity("dana", days_back=1)  # dana has gone, sam has not
+
+        response = self._fire(client)
+        assert response.status_code == 200
+        recipients = [m["to"] for m in self._nudges(client)]
+        assert recipients == ["sam@example.com"], recipients
+
+    def test_it_leaves_alone_anyone_who_already_solved(self, client, monkeypatch):
+        self._group_at_hour(client, 20, monkeypatch)
+        from app import main
+
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+        seed_activity("dana", days_back=1)
+        seed_activity("sam", days_back=1)
+
+        self._fire(client)
+        assert self._nudges(client) == [], "nobody is nudged when everyone has solved"
+
+    def test_nothing_happens_outside_the_nudge_hour(self, client, monkeypatch):
+        self._group_at_hour(client, 9, monkeypatch)
+        from app import main
+
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+        response = self._fire(client)
+        assert response.json()["groups_at_nudge_hour"] == 0
+        assert self._nudges(client) == []
+
+    def test_nobody_is_nudged_twice_in_a_day(self, client, monkeypatch):
+        self._group_at_hour(client, 20, monkeypatch)
+        from app import main
+
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+        self._fire(client)
+        first = len(self._nudges(client))
+        assert first >= 1
+        self._fire(client)
+        assert len(self._nudges(client)) == first, "a second run must not re-send"
+
+    def test_opting_out_stops_them(self, client, monkeypatch):
+        from app import store
+
+        self._group_at_hour(client, 20, monkeypatch)
+        from app import main
+
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+        store.set_nudges(store.get_user_by_handle("sam")["id"], False)
+
+        self._fire(client)
+        assert "sam@example.com" not in [m["to"] for m in self._nudges(client)]
+
+    def test_the_toggle_is_on_the_settings_page(self, client):
+        sign_in(client, "dana")
+        body = client.get("/settings").text
+        assert 'action="/settings/nudges"' in body
+
+    def test_it_can_be_turned_off_and_on(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/settings/nudges", data={})
+        assert store.get_user_by_handle("dana")["nudge_enabled"] is False
+        client.post("/settings/nudges", data={"enabled": "on"})
+        assert store.get_user_by_handle("dana")["nudge_enabled"] is True
+
+    def test_the_endpoint_needs_the_token(self, client, monkeypatch):
+        self._group_at_hour(client, 20, monkeypatch)
+        assert self._fire(client, token="wrong").status_code == 401
+
+    def test_the_endpoint_is_off_without_a_token_configured(self, client):
+        assert self._fire(client).status_code == 404
+
+
 class TestCron:
     def test_cron_endpoint_is_off_without_a_token(self, client):
         response = client.post("/api/cron/sync")

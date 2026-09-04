@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from urllib.parse import quote
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -223,6 +224,14 @@ def today_in(timezone_name: str | None):
     except (ZoneInfoNotFoundError, ValueError):
         zone = ZoneInfo("UTC")
     return datetime.now(zone).date()
+
+
+def hour_in(timezone_name: str | None) -> int:
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+    return datetime.now(zone).hour
 
 
 def group_today(group: dict[str, Any] | None):
@@ -929,6 +938,19 @@ async def save_settings(
     return redirect("/settings", "Saved. Your activity has been refreshed.")
 
 
+@app.post("/settings/nudges")
+async def set_nudges(request: Request, enabled: str = Form(default="")):
+    user = require_user(request)
+    if not user:
+        return redirect("/start?next=/settings")
+    on = enabled == "on"
+    store.set_nudges(user["id"], on)
+    return redirect(
+        "/settings",
+        "Daily reminders on." if on else "Daily reminders off.",
+    )
+
+
 @app.post("/settings/password")
 async def change_password(
     request: Request,
@@ -1158,6 +1180,74 @@ async def cron_sync(request: Request):
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "results": {str(k): v for k, v in results.items()},
         }
+    )
+
+
+# The hour, on each group's own clock, when reminders go out. An hourly cron hits
+# the endpoint below; the app works out whose evening it currently is.
+NUDGE_HOUR = int(os.environ.get("NUDGE_HOUR", "20"))
+
+
+async def nudge_group(group: dict[str, Any], settings) -> list[str]:
+    """Email members of one group who have not solved yet today. Returns addresses."""
+    members = store.members_of(group["id"])
+    today = group_today(group)
+
+    # Accuracy matters more than speed here: nudging someone who already solved is
+    # the one failure that would make people turn these off.
+    await sync.sync_users([m for m in members if sync.is_linked(m)], settings)
+
+    data = board.build_board(members, today, board.DEFAULT_RANGE, since=None)
+    done = [m.name for m in data.members if m.stats.done_today]
+    stamp = today.isoformat()
+    url = f"{settings.base_url}/g/{group['id']}"
+    sent: list[str] = []
+
+    for member in data.members:
+        user = member.user
+        if member.stats.done_today or not member.is_tracked:
+            continue
+        if not user.get("nudge_enabled") or not user.get("email"):
+            continue
+        if user.get("last_nudged_on") == stamp:
+            continue  # already reminded today, from this group or another
+        try:
+            await mailer.send(
+                settings,
+                user["email"],
+                f"You have not solved today - {group['name']}",
+                mailer.nudge_body(
+                    member.name, group["name"], member.stats.current_streak, done, url
+                ),
+            )
+        except mailer.MailError as exc:
+            log.warning("nudge to %s failed: %s", user["email"], exc)
+            continue
+        store.mark_nudged(user["id"], stamp)
+        sent.append(user["email"])
+    return sent
+
+
+@app.post("/api/cron/nudge")
+async def cron_nudge(request: Request):
+    """Call hourly. Only groups whose local time is NUDGE_HOUR are acted on."""
+    settings = get_settings()
+    if not settings.cron_token:
+        return JSONResponse({"error": "CRON_TOKEN is not configured"}, status_code=404)
+    if request.headers.get("authorization", "").removeprefix("Bearer ").strip() != settings.cron_token:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    sent: list[str] = []
+    considered = 0
+    for group in store.all_groups():
+        if hour_in(group.get("timezone")) != NUDGE_HOUR:
+            continue
+        considered += 1
+        sent.extend(await nudge_group(group, settings))
+
+    return JSONResponse(
+        {"groups_at_nudge_hour": considered, "sent": len(sent),
+         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     )
 
 
