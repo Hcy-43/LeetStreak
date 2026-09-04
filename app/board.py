@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
@@ -40,6 +40,8 @@ class MemberBoard:
     sources: list[str]
     problems: dict[date, int]
     errors: list[str]
+    # Titles solved on the board's today, when this person shares them.
+    solved_today: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -129,6 +131,7 @@ def build_board(
     user_ids = [member["id"] for member in members]
     activity = store.activity_for_users(user_ids)
     sync_states = store.sync_state_for_users(user_ids)
+    solved = store.problems_on(user_ids, today)
 
     rows: list[MemberBoard] = []
     for member in members:
@@ -149,6 +152,7 @@ def build_board(
                 sources=sorted(source for source in per_source if per_source[source]),
                 problems=merged,
                 errors=errors,
+                solved_today=solved.get(member["id"], []),
             )
         )
 

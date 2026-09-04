@@ -31,6 +31,22 @@
 </section>
 
 <section class="panel narrow">
+  <h2>What your group sees</h2>
+  <p class="hint">
+    Your squares and streak are always visible to people in a group with you. This
+    decides whether they also see the titles of the problems you solved.
+  </p>
+  <form method="post" action="/settings/problems" class="stacked-form">
+    <label class="checkline">
+      <input type="checkbox" name="enabled" value="on"
+             {{ 'checked' if user.show_problems }}>
+      Show which problems I solve
+    </label>
+    <button type="submit" class="btn ghost">Save</button>
+  </form>
+</section>
+
+<section class="panel narrow">
   <h2>Daily reminder</h2>
   <p class="hint">
     An email in the evening, on your group's clock, if you have not solved and your

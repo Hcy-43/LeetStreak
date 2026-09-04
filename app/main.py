@@ -953,6 +953,21 @@ async def set_nudges(request: Request, enabled: str = Form(default="")):
     )
 
 
+@app.post("/settings/problems")
+async def set_show_problems(request: Request, enabled: str = Form(default="")):
+    user = require_user(request)
+    if not user:
+        return redirect("/start?next=/settings")
+    on = enabled == "on"
+    store.set_show_problems(user["id"], on)
+    return redirect(
+        "/settings",
+        "Your group can see which problems you solve."
+        if on
+        else "Your group sees only that you solved, not what.",
+    )
+
+
 @app.post("/settings/password")
 async def change_password(
     request: Request,

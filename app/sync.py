@@ -47,6 +47,36 @@ def is_stale(states: list[dict[str, Any]], ttl_seconds: int) -> bool:
     return max(attempts) < cutoff
 
 
+async def _record_recent_problems(
+    client: httpx.AsyncClient, user: dict[str, Any]
+) -> None:
+    """Store which problems were solved, not just how many.
+
+    Best-effort on purpose: the squares are the feature, the titles are a bonus, and
+    a failure here must not mark the whole sync as broken.
+    """
+    try:
+        solved = await leetcode.fetch_recent_solved(client, user["leetcode_username"])
+    except SourceError as exc:
+        log.info("recent problems unavailable for user %s: %s", user["id"], exc)
+        return
+
+    unknown = set(s["slug"] for s in solved) - store.known_problem_slugs(
+        s["slug"] for s in solved
+    )
+    if unknown:
+        # Difficulty never changes, so each problem is looked up once, ever.
+        fetched = []
+        for slug in unknown:
+            try:
+                fetched.append(await leetcode.fetch_difficulty(client, slug))
+            except SourceError:
+                fetched.append({"slug": slug, "title": slug, "difficulty": "Unknown"})
+        store.save_problems(fetched)
+
+    store.record_solved(user["id"], solved)
+
+
 async def sync_user(
     client: httpx.AsyncClient, user: dict[str, Any], settings: Settings
 ) -> dict[str, str]:
@@ -62,6 +92,7 @@ async def sync_user(
             )
             counts = {day: n for day, n in counts.items() if start <= day <= today}
             store.replace_activity(user["id"], "leetcode", counts)
+            await _record_recent_problems(client, user)
             store.record_sync(user["id"], "leetcode", "ok")
             results["leetcode"] = "ok"
         except SourceError as exc:

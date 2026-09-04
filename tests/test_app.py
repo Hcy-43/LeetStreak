@@ -762,6 +762,120 @@ class TestPublicPages:
         assert 'href="/terms"' in body
 
 
+class TestSolvedProblems:
+    """Squares say someone practised; titles say what, which is the part worth
+    talking about."""
+
+    def _seed(self, handle, *problems, day=None):
+        from datetime import datetime, timezone
+
+        from app import store
+
+        # The board runs on the group's clock, which defaults to UTC - not the
+        # machine's local date, which can be a day off.
+        day = day or datetime.now(timezone.utc).date()
+        user = store.get_user_by_handle(handle)
+        store.save_problems(
+            [{"slug": s, "title": ti, "difficulty": d} for s, ti, d in problems]
+        )
+        store.record_solved(
+            user["id"],
+            [
+                {
+                    "slug": s,
+                    "solved_at": datetime(day.year, day.month, day.day, 12, tzinfo=timezone.utc),
+                }
+                for s, _, _ in problems
+            ],
+        )
+        return user
+
+    def _group(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+        return group
+
+    def test_todays_problems_show_on_the_board(self, client):
+        group = self._group(client)
+        self._seed("sam", ("two-sum", "Two Sum", "Easy"), ("3sum", "3Sum", "Medium"))
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        assert "Two Sum" in body and "3Sum" in body
+        assert "Medium" in body
+
+    def test_they_link_to_leetcode(self, client):
+        group = self._group(client)
+        self._seed("sam", ("two-sum", "Two Sum", "Easy"))
+        sign_in(client, "dana")
+        assert "https://leetcode.com/problems/two-sum/" in client.get(f"/g/{group['id']}").text
+
+    def test_yesterdays_problems_do_not(self, client):
+        from datetime import datetime, timedelta, timezone
+
+        group = self._group(client)
+        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+        self._seed("sam", ("old-one", "Old One", "Hard"), day=yesterday)
+        sign_in(client, "dana")
+        assert "Old One" not in client.get(f"/g/{group['id']}").text
+
+    def test_opting_out_hides_the_titles(self, client):
+        from app import store
+
+        group = self._group(client)
+        user = self._seed("sam", ("two-sum", "Two Sum", "Easy"))
+        store.set_show_problems(user["id"], False)
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        assert "Two Sum" not in body
+        # The square is still there - only the title is private.
+        assert "day streak" in body
+
+    def test_the_toggle_is_on_the_settings_page(self, client):
+        sign_in(client, "dana")
+        assert 'action="/settings/problems"' in client.get("/settings").text
+
+    def test_the_toggle_works(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/settings/problems", data={})
+        assert store.get_user_by_handle("dana")["show_problems"] is False
+        client.post("/settings/problems", data={"enabled": "on"})
+        assert store.get_user_by_handle("dana")["show_problems"] is True
+
+    def test_recording_the_same_solve_twice_is_harmless(self, client):
+        from app import db, store
+
+        sign_in(client, "dana")
+        for _ in range(3):
+            self._seed("dana", ("two-sum", "Two Sum", "Easy"))
+        user = store.get_user_by_handle("dana")
+        with db.connection() as conn:
+            n = conn.execute(
+                "select count(*) n from solved_problems where user_id = %s", (user["id"],)
+            ).fetchone()["n"]
+        assert n == 1
+
+    def test_only_unknown_problems_are_looked_up(self, client):
+        """Difficulty never changes, so each problem is fetched once, ever."""
+        from app import store
+
+        store.save_problems([{"slug": "two-sum", "title": "Two Sum", "difficulty": "Easy"}])
+        known = store.known_problem_slugs(["two-sum", "3sum"])
+        assert known == {"two-sum"}
+
+    def test_your_own_page_shows_them_too(self, client):
+        self._group(client)
+        self._seed("dana", ("valid-anagram", "Valid Anagram", "Easy"))
+        sign_in(client, "dana")
+        assert "Valid Anagram" in client.get("/").text
+
+
 class TestGroupClock:
     """A board needs one shared "today", or the count means different things to
     different members."""

@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS users (
     display_name      TEXT    NOT NULL DEFAULT '',
     avatar_url        TEXT    NOT NULL DEFAULT '',
     leetcode_username TEXT    NOT NULL DEFAULT '',
+    -- Whether your group can see which problems you solved, not just that you did.
+    show_problems     BOOLEAN NOT NULL DEFAULT true,
     -- Evening reminder when you have not solved and your group has.
     nudge_enabled     BOOLEAN NOT NULL DEFAULT true,
     last_nudged_on    TEXT    NOT NULL DEFAULT '',
@@ -97,6 +99,26 @@ CREATE TABLE IF NOT EXISTS email_codes (
     PRIMARY KEY (email, purpose)
 );
 
+-- Problem metadata. Difficulty never changes, so this is fetched once per slug.
+CREATE TABLE IF NOT EXISTS problems (
+    slug       TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    difficulty TEXT NOT NULL DEFAULT 'Unknown'
+);
+
+-- What each person solved, one row per problem per day. LeetCode only exposes the
+-- last 20 accepted submissions, so this accumulates forwards and cannot be backfilled.
+CREATE TABLE IF NOT EXISTS solved_problems (
+    user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    slug      TEXT    NOT NULL REFERENCES problems (slug) ON DELETE CASCADE,
+    solved_on TEXT    NOT NULL,
+    solved_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, slug, solved_on)
+);
+
+CREATE INDEX IF NOT EXISTS idx_solved_user_day
+    ON solved_problems (user_id, solved_on DESC);
+
 CREATE TABLE IF NOT EXISTS sync_state (
     user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     source          TEXT    NOT NULL,
@@ -116,9 +138,32 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users ADD COLUMN IF NOT EXISTS nudge_enabled BOOLEAN NOT NULL DEFAULT true;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_nudged_on TEXT NOT NULL DEFAULT '';
     """,
+    # Which problems, not just how many.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS show_problems BOOLEAN NOT NULL DEFAULT true;
+
+    CREATE TABLE IF NOT EXISTS problems (
+        slug       TEXT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        difficulty TEXT NOT NULL DEFAULT 'Unknown'
+    );
+
+    CREATE TABLE IF NOT EXISTS solved_problems (
+        user_id   INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        slug      TEXT    NOT NULL REFERENCES problems (slug) ON DELETE CASCADE,
+        solved_on TEXT    NOT NULL,
+        solved_at TEXT    NOT NULL,
+        PRIMARY KEY (user_id, slug, solved_on)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_solved_user_day
+        ON solved_problems (user_id, solved_on DESC);
+    """,
 ]
 
 TABLES = (
+    "solved_problems",
+    "problems",
     "sync_state",
     "email_codes",
     "identities",

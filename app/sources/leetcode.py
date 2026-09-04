@@ -45,6 +45,31 @@ query userPublicProfile($username: String!) {
 """
 
 
+# LeetCode caps this at 20 no matter what limit is asked for, so there is no
+# backfill: history only accumulates from the first time we look.
+RECENT_QUERY = """
+query recentAcSubmissions($username: String!, $limit: Int!) {
+  recentAcSubmissionList(username: $username, limit: $limit) {
+    id
+    title
+    titleSlug
+    timestamp
+  }
+}
+"""
+
+DIFFICULTY_QUERY = """
+query questionDifficulty($titleSlug: String!) {
+  question(titleSlug: $titleSlug) {
+    title
+    difficulty
+  }
+}
+"""
+
+RECENT_LIMIT = 20
+
+
 async def _post(
     client: httpx.AsyncClient, query: str, variables: dict, subject: str = ""
 ) -> dict:
@@ -147,4 +172,46 @@ async def fetch_profile(client: httpx.AsyncClient, username: str) -> dict:
         "avatar_url": profile.get("userAvatar") or "",
         "ranking": profile.get("ranking"),
         "total_solved": solved,
+    }
+
+
+async def fetch_recent_solved(
+    client: httpx.AsyncClient, username: str
+) -> list[dict[str, object]]:
+    """The most recent accepted submissions, newest first.
+
+    Returns at most 20 - LeetCode's own ceiling. Someone who solves more than that
+    between two syncs loses the overflow, which is why syncing often matters.
+    """
+    payload = await _post(
+        client,
+        RECENT_QUERY,
+        {"username": username, "limit": RECENT_LIMIT},
+        subject=username,
+    )
+    rows = payload.get("recentAcSubmissionList") or []
+    solved = []
+    for row in rows:
+        slug = (row or {}).get("titleSlug")
+        stamp = (row or {}).get("timestamp")
+        if not slug or not stamp:
+            continue
+        try:
+            moment = datetime.fromtimestamp(int(stamp), tz=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        solved.append(
+            {"slug": slug, "title": row.get("title") or slug, "solved_at": moment}
+        )
+    return solved
+
+
+async def fetch_difficulty(client: httpx.AsyncClient, slug: str) -> dict[str, str]:
+    """Title and difficulty for one problem. Never changes, so cache it forever."""
+    payload = await _post(client, DIFFICULTY_QUERY, {"titleSlug": slug}, subject=slug)
+    question = payload.get("question") or {}
+    return {
+        "slug": slug,
+        "title": question.get("title") or slug,
+        "difficulty": question.get("difficulty") or "Unknown",
     }

@@ -70,6 +70,30 @@
 
 * { box-sizing: border-box; }
 
+/* What someone actually solved today. Difficulty is the signal here, so it gets
+   colour; the title is a link out to the problem. */
+.solved { list-style: none; margin: .8rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem .5rem; }
+.solved li {
+  display: inline-flex; align-items: center; gap: .4rem;
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: .15rem .6rem .15rem .7rem; font-size: .8rem; background: var(--surface-2);
+}
+.solved a { color: var(--text); text-decoration: none; }
+.solved a:hover { text-decoration: underline; }
+.diff { font-size: .66rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.diff.easy { color: #1a7f37; }
+.diff.medium { color: #9a6700; }
+.diff.hard { color: #cf222e; }
+.diff.unknown { color: var(--muted); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .diff.easy { color: #3fb950; }
+  :root:not([data-theme="light"]) .diff.medium { color: #d29922; }
+  :root:not([data-theme="light"]) .diff.hard { color: #ff7b72; }
+}
+:root[data-theme="dark"] .diff.easy { color: #3fb950; }
+:root[data-theme="dark"] .diff.medium { color: #d29922; }
+:root[data-theme="dark"] .diff.hard { color: #ff7b72; }
+
 .checkline { display: flex; align-items: center; gap: .5rem; font-size: .9rem; }
 .checkline input { width: 16px; height: 16px; }
 

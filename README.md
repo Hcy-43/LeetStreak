@@ -50,6 +50,11 @@ serving a site nobody can sign up for.
 data behind the heatmap on your profile. Needs nothing but your username, and your profile
 calendar is public by default.
 
+Alongside the counts it records **which problems** you solved, with difficulty, and shows
+today's on the board. LeetCode only exposes the last 20 accepted submissions, so this
+cannot be backfilled — history accumulates from the first sync onwards. Anyone who would
+rather share only the squares can turn the titles off in settings.
+
 LeetCode reports its calendar in UTC and we store it exactly as given, rather than
 inventing our own boundary — so a day here matches what leetcode.com shows you.
 

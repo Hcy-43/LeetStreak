@@ -355,6 +355,77 @@ def add_member(group_id: int, user_id: int) -> None:
         )
 
 
+def known_problem_slugs(slugs: Iterable[str]) -> set[str]:
+    """Which of these we already have difficulty for, so we only fetch the rest."""
+    wanted = list(slugs)
+    if not wanted:
+        return set()
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT slug FROM problems WHERE slug = ANY(%s)", (wanted,)
+        ).fetchall()
+    return {row["slug"] for row in rows}
+
+
+def save_problems(problems: Iterable[dict[str, str]]) -> None:
+    rows = [(p["slug"], p["title"], p.get("difficulty") or "Unknown") for p in problems]
+    if not rows:
+        return
+    with db.transaction() as conn, conn.cursor() as cursor:
+        cursor.executemany(
+            """INSERT INTO problems (slug, title, difficulty) VALUES (%s, %s, %s)
+               ON CONFLICT (slug) DO UPDATE SET
+                   title = excluded.title, difficulty = excluded.difficulty""",
+            rows,
+        )
+
+
+def record_solved(user_id: int, solved: Iterable[dict[str, Any]]) -> None:
+    """Add to what we know. Never deletes: LeetCode only shows the last 20, so a
+    wholesale replace would throw away everything older than that window."""
+    rows = [
+        (user_id, s["slug"], s["solved_at"].date().isoformat(), s["solved_at"].isoformat())
+        for s in solved
+    ]
+    if not rows:
+        return
+    with db.transaction() as conn, conn.cursor() as cursor:
+        cursor.executemany(
+            """INSERT INTO solved_problems (user_id, slug, solved_on, solved_at)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (user_id, slug, solved_on) DO NOTHING""",
+            rows,
+        )
+
+
+def problems_on(user_ids: Iterable[int], day: date) -> dict[int, list[dict[str, str]]]:
+    """What each of these people solved on one day, respecting their visibility choice."""
+    ids = list(user_ids)
+    if not ids:
+        return {}
+    with db.connection() as conn:
+        rows = conn.execute(
+            """SELECT s.user_id, p.slug, p.title, p.difficulty
+                 FROM solved_problems s
+                 JOIN problems p ON p.slug = s.slug
+                 JOIN users u ON u.id = s.user_id
+                WHERE s.user_id = ANY(%s) AND s.solved_on = %s AND u.show_problems
+                ORDER BY s.solved_at""",
+            (ids, day.isoformat()),
+        ).fetchall()
+    out: dict[int, list[dict[str, str]]] = {}
+    for row in rows:
+        out.setdefault(row["user_id"], []).append(
+            {"slug": row["slug"], "title": row["title"], "difficulty": row["difficulty"]}
+        )
+    return out
+
+
+def set_show_problems(user_id: int, visible: bool) -> None:
+    with db.transaction() as conn:
+        conn.execute("UPDATE users SET show_problems = %s WHERE id = %s", (visible, user_id))
+
+
 def all_groups() -> list[dict[str, Any]]:
     with db.connection() as conn:
         return [dict(r) for r in conn.execute("SELECT * FROM groups ORDER BY id").fetchall()]

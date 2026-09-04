@@ -53,6 +53,18 @@
     {% endwith %}
   </div>
 
+  {% if me.solved_today %}
+    <ul class="solved">
+      {% for problem in me.solved_today %}
+        <li>
+          <a href="https://leetcode.com/problems/{{ problem.slug }}/"
+             target="_blank" rel="noopener noreferrer">{{ problem.title }}</a>
+          <span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
   <div class="legend">
     <span class="muted small">Less</span>
     <span class="hm-cell l0"></span><span class="hm-cell l1"></span>
