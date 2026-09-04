@@ -24,12 +24,32 @@ DEMO_PASSWORD = "demo-password-1"
 # correctly replaces this fake history with nothing - which looks like the demo broke.
 # These 404 instead, so the sync errors and leaves the seeded rows alone.
 PEOPLE = [
-    # email, display name, leetcode handle, solve probability, current run length
+    # email, display name, leetcode handle, solve probability, current run length.
+    # A negative run means the streak ran through yesterday and today is still
+    # blank - the "at risk" state, which the board calls out.
     ("dana@example.com", "Dana Whitfield", "demo-dana-qx7k2", 0.86, 23),
     ("sam@example.com", "Sam Okonkwo", "demo-sam-qx7k2", 0.72, 5),
     ("riya@example.com", "Riya Balan", "demo-riya-qx7k2", 0.94, 61),
     ("theo@example.com", "Theo Lindqvist", "demo-theo-qx7k2", 0.45, 0),
-    ("nina@example.com", "Nina Sørensen", "demo-nina-qx7k2", 0.6, 1),
+    ("nina@example.com", "Nina Sørensen", "demo-nina-qx7k2", 0.6, -9),
+]
+
+# How long the demo group has existed. Long enough that missed days accumulate and
+# the rank board has something to rank.
+GROUP_AGE_DAYS = 24
+
+# Real problems, so numbers, difficulties and tags all look like the live thing.
+PROBLEMS = [
+    ("two-sum", "1", "Two Sum", "Easy", ["Array", "Hash Table"]),
+    ("valid-anagram", "242", "Valid Anagram", "Easy", ["Hash Table", "String", "Sorting"]),
+    ("3sum", "15", "3Sum", "Medium", ["Array", "Two Pointers", "Sorting"]),
+    ("course-schedule", "207", "Course Schedule", "Medium",
+     ["Depth-First Search", "Breadth-First Search", "Graph"]),
+    ("lru-cache", "146", "LRU Cache", "Medium", ["Hash Table", "Linked List", "Design"]),
+    ("median-of-two-sorted-arrays", "4", "Median of Two Sorted Arrays", "Hard",
+     ["Array", "Binary Search", "Divide and Conquer"]),
+    ("word-ladder", "127", "Word Ladder", "Hard", ["Hash Table", "String", "Breadth-First Search"]),
+    ("climbing-stairs", "70", "Climbing Stairs", "Easy", ["Math", "Dynamic Programming"]),
 ]
 
 
@@ -87,11 +107,17 @@ def main() -> None:
                 counts[day] = random.choice([1, 1, 1, 2, 2, 3, 5])
 
         # Overwrite the tail so each person has the intended current streak.
-        for offset in range(run):
-            counts[today - timedelta(days=offset)] = random.choice([1, 1, 2, 3])
-        if run == 0:
+        if run < 0:
+            # Alive through yesterday, nothing yet today.
+            for offset in range(1, abs(run) + 1):
+                counts[today - timedelta(days=offset)] = random.choice([1, 1, 2, 3])
             counts.pop(today, None)
-            counts.pop(today - timedelta(days=1), None)
+        else:
+            for offset in range(run):
+                counts[today - timedelta(days=offset)] = random.choice([1, 1, 2, 3])
+            if run == 0:
+                counts.pop(today, None)
+                counts.pop(today - timedelta(days=1), None)
 
         store.replace_activity(user["id"], "leetcode", counts)
         _pin_sync(user["id"])
@@ -99,6 +125,35 @@ def main() -> None:
     group = store.create_group("Daily grind crew", owner["id"])
     for email, *_ in PEOPLE[1:]:
         store.add_member(group["id"], store.get_user_by_email(email)["id"])
+
+    # Backdate the group so misses accrue and the rank board is worth looking at.
+    started = (datetime.now(timezone.utc) - timedelta(days=GROUP_AGE_DAYS))
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE groups SET created_at = %s WHERE id = %s",
+            (started.isoformat(timespec="seconds"), group["id"]),
+        )
+
+    store.save_problems(
+        [
+            {"slug": slug, "number": num, "title": title, "difficulty": diff, "tags": tags}
+            for slug, num, title, diff, tags in PROBLEMS
+        ]
+    )
+    # Whoever solved today gets a plausible handful of titles against it.
+    for email, *_ in PEOPLE:
+        user = store.get_user_by_email(email)
+        activity = store.activity_for_users([user["id"]]).get(user["id"], {})
+        if today not in activity.get("leetcode", {}):
+            continue
+        picked = random.sample(PROBLEMS, random.choice([1, 2, 2, 3]))
+        store.record_solved(
+            user["id"],
+            [
+                {"slug": slug, "solved_at": datetime.now(timezone.utc)}
+                for slug, *_ in picked
+            ],
+        )
 
     print(f"Seeded {len(PEOPLE)} people into '{group['name']}' (group id {group['id']}).")
     print(f"Invite link: {settings.base_url}/join/{group['invite_code']}")

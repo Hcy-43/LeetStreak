@@ -82,6 +82,22 @@ class Board:
         return choices + remaining[:1]
 
     @property
+    def by_missed(self) -> list[MemberBoard]:
+        """Fewest misses first. Ranking the other way round would make the board a
+        pillory, and these are meant to be friends."""
+        return sorted(
+            (m for m in self.members if m.is_tracked),
+            key=lambda m: (m.stats.missed_days, -m.stats.current_streak, m.name.lower()),
+        )
+
+    @property
+    def days_since_start(self) -> int:
+        """Days the group has existed, today included - the denominator for misses."""
+        if self.since is None:
+            return 0
+        return (self.today - self.since).days + 1
+
+    @property
     def done_today(self) -> list[MemberBoard]:
         return [member for member in self.members if member.stats.done_today]
 

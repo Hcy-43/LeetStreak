@@ -111,6 +111,36 @@
 :root[data-theme="dark"] .diff.medium { color: #d29922; }
 :root[data-theme="dark"] .diff.hard { color: #ff7b72; }
 
+/* A live streak that dies at midnight is the most urgent thing on the page. */
+.today-list li.at-risk { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, var(--surface-2)); }
+.today-list li.at-risk .today-name { color: var(--text); }
+.at-risk-flag { color: var(--warn); font-weight: 600; }
+
+/* Ranked by fewest misses. The bar is the point: a number alone does not show
+   how much of the group's life someone has sat out. */
+.missed-board { margin-bottom: 1.2rem; }
+.missed-board h2 { font-size: 1rem; margin: 0 0 .8rem; }
+.rank { list-style: none; margin: 0 0 .7rem; padding: 0; display: grid; gap: .45rem; }
+.rank li {
+  display: grid; align-items: center; gap: .65rem;
+  grid-template-columns: 1.3rem auto minmax(0, 1fr) minmax(60px, 22%) auto;
+  font-size: .86rem;
+}
+.rank-n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .78rem; text-align: right; }
+.rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.rank-bar {
+  height: 7px; border-radius: 999px; background: var(--l0); overflow: hidden;
+}
+.rank-bar span { display: block; height: 100%; background: var(--warn); border-radius: 999px; }
+.rank-value { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.rank-of { color: var(--muted); font-weight: 400; font-size: .78rem; }
+.rank li:first-child .rank-value { color: var(--accent); }
+
+@media (max-width: 560px) {
+  .rank li { grid-template-columns: 1.3rem auto minmax(0, 1fr) auto; }
+  .rank-bar { display: none; }
+}
+
 /* A miss is worth noticing, but it is not an error. */
 .stat.missed .value { color: var(--warn); }
 

@@ -34,7 +34,7 @@
   {% else %}
     <ul class="today-list">
       {% for member in board.members if member.is_tracked %}
-        <li class="{{ 'done' if member.stats.done_today else 'pending' }}">
+        <li class="{{ 'done' if member.stats.done_today else ('at-risk' if member.stats.at_risk else 'pending') }}">
           {% if member.user.avatar_url %}
             <img class="avatar" src="{{ member.user.avatar_url }}" alt="" loading="lazy">
           {% else %}
@@ -45,6 +45,8 @@
             <span class="today-state">
               {% if member.stats.done_today %}
                 <span class="tick" aria-hidden="true">&#10003;</span> solved today
+              {% elif member.stats.at_risk %}
+                <span class="at-risk-flag">{{ member.stats.current_streak }}-day streak at risk</span>
               {% else %}
                 not yet
               {% endif %}
@@ -55,6 +57,32 @@
     </ul>
   {% endif %}
 </section>
+
+{% if board.since and board.tracked_count %}
+  <section class="panel missed-board">
+    <h2>Days missed since {{ board.since.strftime('%-d %b') }}</h2>
+    <ol class="rank">
+      {% for member in board.by_missed %}
+        <li>
+          <span class="rank-n">{{ loop.index }}</span>
+          {% if member.user.avatar_url %}
+            <img class="avatar sm" src="{{ member.user.avatar_url }}" alt="" loading="lazy">
+          {% else %}
+            <span class="avatar sm placeholder" aria-hidden="true">{{ member.name[:1] | upper }}</span>
+          {% endif %}
+          <span class="rank-name">{{ member.name }}</span>
+          <span class="rank-bar" aria-hidden="true">
+            <span style="width: {{ (member.stats.missed_days / board.days_since_start * 100) | round }}%"></span>
+          </span>
+          <span class="rank-value">
+            {{ member.stats.missed_days }}<span class="rank-of">/{{ board.days_since_start }}</span>
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+    <p class="hint">Today does not count as missed until it is over.</p>
+  </section>
+{% endif %}
 
 <section class="board">
   {% for member in board.members %}

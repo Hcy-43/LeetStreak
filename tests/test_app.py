@@ -126,6 +126,13 @@ def sign_in(client: TestClient, handle: str, password: str = PASSWORD) -> None:
     assert "Welcome back" in response.text, response.text
 
 
+def utc_today():
+    """The board's date, which is not necessarily the machine's."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).date()
+
+
 def backdate_group(group_id: int, days: int) -> None:
     """Move a group's creation date into the past."""
     from datetime import datetime, timedelta, timezone
@@ -955,6 +962,111 @@ class TestMissedDays:
         group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
         backdate_group(group["id"], 5)
         assert "missed" in client.get(f"/g/{group['id']}").text
+
+
+class TestMissedRankBoard:
+    """A number per card does not show who is actually keeping up."""
+
+    def _group(self, client, days=20):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+        backdate_group(group["id"], days)
+        return store.get_group(group["id"])
+
+    def test_it_lists_every_tracked_member(self, client):
+        group = self._group(client)
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        assert "Days missed since" in body
+        assert body.count('class="rank-name"') == 2
+
+    def test_fewest_misses_ranks_first(self, client):
+        group = self._group(client)
+        seed_activity("dana", days_back=20)  # dana has been diligent
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        ranks = body[body.index('class="rank"') : body.index("Today does not count")]
+        # Display names default to the LeetCode handle, which is lower case here.
+        assert ranks.index("dana") < ranks.index("sam"), "dana missed fewer, so is first"
+
+    def test_it_says_today_does_not_count(self, client):
+        group = self._group(client)
+        sign_in(client, "dana")
+        assert "Today does not count as missed" in client.get(f"/g/{group['id']}").text
+
+    def test_a_brand_new_group_still_renders(self, client):
+        group = self._group(client, days=0)
+        sign_in(client, "dana")
+        response = client.get(f"/g/{group['id']}")
+        assert response.status_code == 200
+        assert 'class="rank-of">/1<' in response.text
+
+    def test_the_ordering_helper_is_by_misses_then_streak(self, client):
+        from datetime import date
+
+        from app import board
+        from app.streaks import Stats
+
+        def member(name, missed, streak):
+            return board.MemberBoard(
+                user={"id": 1, "leetcode_username": "x", "display_name": name},
+                stats=Stats(streak, streak, 0, 0, False, False, None, missed),
+                calendar=board.Calendar(), sources=[], problems={}, errors=[],
+            )
+
+        data = board.Board(
+            members=[member("C", 5, 1), member("A", 0, 3), member("B", 0, 9)],
+            today=date(2026, 9, 4), weeks=4, range_key="1m", since=date(2026, 8, 1),
+        )
+        assert [m.name for m in data.by_missed] == ["B", "A", "C"]
+
+
+class TestAtRisk:
+    """A live streak that dies at midnight is the most urgent thing on the board."""
+
+    def _group_with_at_risk(self, client):
+        from datetime import timedelta
+
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        backdate_group(group["id"], 30)  # or the streak predates the group and reads 0
+        user = store.get_user_by_handle("dana")
+        today = utc_today()
+        # Solved every day up to yesterday, nothing today.
+        store.replace_activity(
+            user["id"], "leetcode",
+            {today - timedelta(days=i): 1 for i in range(1, 6)},
+        )
+        return group
+
+    def test_the_today_strip_names_the_stake(self, client):
+        group = self._group_with_at_risk(client)
+        body = client.get(f"/g/{group['id']}").text
+        assert "5-day streak at risk" in body
+
+    def test_the_card_is_marked(self, client):
+        group = self._group_with_at_risk(client)
+        assert 'class="at-risk"' in client.get(f"/g/{group['id']}").text
+
+    def test_someone_with_no_streak_just_says_not_yet(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        backdate_group(group["id"], 30)
+        store.replace_activity(store.get_user_by_handle("dana")["id"], "leetcode", {})
+        body = client.get(f"/g/{group['id']}").text
+        assert "not yet" in body
+        assert "at risk" not in body
 
 
 class TestGroupClock:
