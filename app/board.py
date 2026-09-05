@@ -121,6 +121,26 @@ def resolve_range(value: str | None) -> tuple[str, int]:
     return key, RANGE_OPTIONS[key]
 
 
+def reconcile(utc_counts: dict[date, int], local: dict[date, int]) -> dict[date, int]:
+    """Prefer timestamp-derived local days wherever we have them.
+
+    From the earliest day we have a timestamp for, the local calendar takes over
+    entirely: those days are cut on real submission times rather than on UTC
+    midnights relabelled as local ones. Anything older keeps its UTC bucket, which
+    is close enough for squares nobody is checking to the hour.
+
+    LeetCode caps the timestamped window at 20 accepted submissions, so the oldest
+    local day can be short a few solves. That moves a square's shade, never whether
+    it is green.
+    """
+    if not local:
+        return utc_counts
+    cutover = min(local)
+    merged = {day: n for day, n in utc_counts.items() if day < cutover}
+    merged.update(local)
+    return merged
+
+
 def weeks_since(start: date, today: date) -> int:
     """How many week columns are needed to cover `start` through `today`."""
     span = (week_start(today) - week_start(start)).days // 7
@@ -132,6 +152,7 @@ def build_board(
     today: date,
     range_key: str | None,
     since: date | None = None,
+    timezone_name: str | None = None,
 ) -> Board:
     key, weeks = resolve_range(range_key)
     # A group board should not show history from before the group existed - those
@@ -146,13 +167,14 @@ def build_board(
         window_start = max(window_start, since)
     user_ids = [member["id"] for member in members]
     activity = store.activity_for_users(user_ids)
+    local = store.local_activity(user_ids, timezone_name) if timezone_name else {}
     sync_states = store.sync_state_for_users(user_ids)
     solved = store.problems_on(user_ids, today)
 
     rows: list[MemberBoard] = []
     for member in members:
         per_source = activity.get(member["id"], {})
-        merged = merge_sources(per_source)
+        merged = reconcile(merge_sources(per_source), local.get(member["id"], {}))
         errors = [
             f"{SOURCE_LABELS.get(state['source'], state['source'])}: {state['error']}"
             for state in sync_states.get(member["id"], [])

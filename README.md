@@ -55,14 +55,19 @@ today's on the board. LeetCode only exposes the last 20 accepted submissions, so
 cannot be backfilled — history accumulates from the first sync onwards. Anyone who would
 rather share only the squares can turn the titles off in settings.
 
-**A day here is a LeetCode day, which means UTC.** The submission calendar gives us a
-date and a count and never a timestamp, so those buckets cannot honestly be re-cut into
-another timezone: doing it shifts every evening solve west of Greenwich onto the next
-day, and every morning solve east of it onto the previous one. The board therefore reads
-them exactly as LeetCode wrote them, and the squares match your LeetCode profile.
+**The clock belongs to the group.** Each group has a timezone, set by its owner, and
+every streak and "solved today" is measured against that one midnight — otherwise the
+count means something different to each member reading it.
 
-A group still has a timezone, but it decides one thing only: when the evening reminder
-goes out. That is a question about people, not about data.
+Making that honest takes two sources. The submission calendar gives a date and a count
+in UTC and never a timestamp, so read against a local midnight it puts an evening solve
+west of Greenwich on the wrong day: 20:56 in Pittsburgh is already tomorrow in UTC. But
+LeetCode also exposes the last 20 accepted submissions *with* timestamps, so for the
+window those cover — typically weeks — days are cut on real submission times in the
+group's timezone. Older history keeps its UTC buckets, which is close enough for squares
+nobody is checking to the hour.
+
+Nothing after today is ever counted, on any clock.
 
 ## Accounts
 

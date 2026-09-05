@@ -4,6 +4,7 @@ import re
 import secrets
 import psycopg
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, Iterable
 
 from . import db
@@ -353,6 +354,41 @@ def add_member(group_id: int, user_id: int) -> None:
                ON CONFLICT DO NOTHING""",
             (group_id, user_id, now_iso()),
         )
+
+
+def local_activity(
+    user_ids: Iterable[int], timezone_name: str | None
+) -> dict[int, dict[date, int]]:
+    """Re-bucket timestamped solves into a local calendar.
+
+    The submission calendar is UTC day-and-count, which cannot be moved to another
+    timezone. `solved_problems` keeps the real submission time, so for the window it
+    covers we can say which *local* day a solve belongs to - the difference between
+    "you solved tonight" and "you solved tomorrow".
+    """
+    ids = list(user_ids)
+    if not ids:
+        return {}
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+
+    with db.connection() as conn:
+        rows = conn.execute(
+            "SELECT user_id, solved_at FROM solved_problems WHERE user_id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+
+    out: dict[int, dict[date, int]] = {}
+    for row in rows:
+        moment = parse_iso(row["solved_at"])
+        if moment is None:
+            continue
+        day = moment.astimezone(zone).date()
+        counts = out.setdefault(row["user_id"], {})
+        counts[day] = counts.get(day, 0) + 1
+    return out
 
 
 def known_problem_slugs(slugs: Iterable[str]) -> set[str]:

@@ -1185,6 +1185,98 @@ class TestGroupClock:
         assert isinstance(main.hour_in("America/New_York"), int)
 
 
+class TestLocalDayBucketing:
+    """LeetCode dates submissions in UTC. Groups live somewhere."""
+
+    def _pittsburgh_group(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Pittsburgh crew"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        store.set_group_timezone(group["id"], "America/New_York")
+        return store.get_group(group["id"])
+
+    def _solve_at(self, handle, moment, slug="isomorphic-strings"):
+        from app import store
+
+        user = store.get_user_by_handle(handle)
+        store.save_problems([{"slug": slug, "number": "205", "title": "Isomorphic Strings",
+                              "difficulty": "Easy", "tags": ["String"]}])
+        store.record_solved(user["id"], [{"slug": slug, "solved_at": moment}])
+        store.replace_activity(user["id"], "leetcode", {moment.date(): 1})
+        return user
+
+    def test_an_evening_solve_counts_on_the_local_day(self, client):
+        """20:56 in Pittsburgh is tomorrow in UTC. It must still be today."""
+        from datetime import datetime, timezone as tz
+
+        from app import board, store
+
+        group = self._pittsburgh_group(client)
+        user = self._solve_at("dana", datetime(2026, 9, 5, 0, 56, tzinfo=tz.utc))
+        pittsburgh_today = date(2026, 9, 4)
+
+        member = board.build_board(
+            [store.get_user(user["id"])], pittsburgh_today, "1w",
+            since=pittsburgh_today, timezone_name="America/New_York",
+        ).members[0]
+        assert member.stats.done_today is True
+        assert member.stats.current_streak == 1
+
+    def test_without_the_timestamp_it_would_be_missed(self, client):
+        """The regression this guards: UTC buckets read against a local midnight."""
+        from app.streaks import compute_stats
+
+        stats = compute_stats({date(2026, 9, 5): 1}, date(2026, 9, 4), streak_since=date(2026, 9, 4))
+        assert stats.done_today is False
+
+    def test_older_history_keeps_its_utc_buckets(self):
+        """The timestamp window is only 20 submissions deep."""
+        from app.board import reconcile
+
+        utc = {date(2026, 6, 1): 3, date(2026, 8, 1): 2, date(2026, 9, 4): 1}
+        local = {date(2026, 9, 3): 1, date(2026, 9, 4): 2}
+        merged = reconcile(utc, local)
+        assert merged[date(2026, 6, 1)] == 3      # older, untouched
+        assert merged[date(2026, 8, 1)] == 2
+        assert merged[date(2026, 9, 4)] == 2      # local wins from the cutover
+
+    def test_the_cutover_day_itself_uses_local(self):
+        from app.board import reconcile
+
+        merged = reconcile({date(2026, 9, 3): 5}, {date(2026, 9, 3): 2})
+        assert merged == {date(2026, 9, 3): 2}
+
+    def test_no_timestamps_changes_nothing(self):
+        from app.board import reconcile
+
+        utc = {date(2026, 9, 3): 1}
+        assert reconcile(utc, {}) == utc
+
+    def test_the_timezone_is_read_from_the_group(self, client):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        self._pittsburgh_group(client)
+        user = self._solve_at("dana", datetime(2026, 9, 5, 0, 56, tzinfo=tz.utc))
+        local = store.local_activity([user["id"]], "America/New_York")
+        assert date(2026, 9, 4) in local[user["id"]]
+        utc = store.local_activity([user["id"]], "UTC")
+        assert date(2026, 9, 5) in utc[user["id"]]
+
+    def test_a_bogus_timezone_falls_back_to_utc(self, client):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        self._pittsburgh_group(client)
+        user = self._solve_at("dana", datetime(2026, 9, 5, 0, 56, tzinfo=tz.utc))
+        local = store.local_activity([user["id"]], "Mars/Olympus")
+        assert date(2026, 9, 5) in local[user["id"]]
+
+
 class TestFutureDays:
     """Days that have not happened must not appear in any number."""
 
