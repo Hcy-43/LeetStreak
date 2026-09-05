@@ -850,6 +850,55 @@ class TestSolvedProblems:
         sign_in(client, "dana")
         assert 'action="/settings/problems"' in client.get("/settings").text
 
+    def test_an_evening_solve_appears_on_its_own_local_day(self, client):
+        """Stored under tomorrow's UTC date, but it belongs to tonight."""
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        store.save_problems([{"slug": "isomorphic-strings", "number": "205",
+                              "title": "Isomorphic Strings", "difficulty": "Easy",
+                              "tags": ["String"]}])
+        store.record_solved(user["id"], [
+            {"slug": "isomorphic-strings",
+             "solved_at": datetime(2026, 9, 5, 0, 56, tzinfo=tz.utc)}  # 20:56 in Pittsburgh
+        ])
+
+        pittsburgh = store.problems_on([user["id"]], date(2026, 9, 4), "America/New_York")
+        assert [p["title"] for p in pittsburgh[user["id"]]] == ["Isomorphic Strings"]
+
+    def test_the_same_solve_is_a_utc_board_tomorrow(self, client):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        store.save_problems([{"slug": "two-sum", "number": "1", "title": "Two Sum",
+                              "difficulty": "Easy", "tags": ["Array"]}])
+        store.record_solved(user["id"], [
+            {"slug": "two-sum", "solved_at": datetime(2026, 9, 5, 0, 56, tzinfo=tz.utc)}
+        ])
+        assert store.problems_on([user["id"]], date(2026, 9, 4), "UTC") == {}
+        assert store.problems_on([user["id"]], date(2026, 9, 5), "UTC")[user["id"]]
+
+    def test_a_solve_on_the_day_itself_still_matches(self, client):
+        """The window reaches a day either side; the middle must not be lost."""
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        store.save_problems([{"slug": "3sum", "number": "15", "title": "3Sum",
+                              "difficulty": "Medium", "tags": ["Array"]}])
+        store.record_solved(user["id"], [
+            {"slug": "3sum", "solved_at": datetime(2026, 9, 4, 16, 0, tzinfo=tz.utc)}
+        ])
+        assert store.problems_on([user["id"]], date(2026, 9, 4), "America/New_York")[user["id"]]
+
     def test_the_toggle_works(self, client):
         from app import store
 

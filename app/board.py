@@ -175,7 +175,7 @@ def build_board(
     activity = store.activity_for_users(user_ids)
     local = store.local_activity(user_ids, timezone_name) if timezone_name else {}
     sync_states = store.sync_state_for_users(user_ids)
-    solved = store.problems_on(user_ids, today)
+    solved = store.problems_on(user_ids, today, timezone_name)
 
     rows: list[MemberBoard] = []
     for member in members:

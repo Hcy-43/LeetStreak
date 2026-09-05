@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import secrets
 import psycopg
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, Iterable
 
@@ -445,23 +445,43 @@ def record_solved(user_id: int, solved: Iterable[dict[str, Any]]) -> None:
         )
 
 
-def problems_on(user_ids: Iterable[int], day: date) -> dict[int, list[dict[str, str]]]:
-    """What each of these people solved on one day, respecting their visibility choice."""
+def problems_on(
+    user_ids: Iterable[int], day: date, timezone_name: str | None = None
+) -> dict[int, list[dict[str, str]]]:
+    """What each of these people solved on one day, on that board's clock.
+
+    `solved_on` is the UTC date written at sync time, but a board's day is its
+    group's. A solve at 20:56 in Pittsburgh is stored under the next UTC date, so
+    matching on `solved_on` would hide it from its own day. The stored timestamp is
+    the authority: fetch the neighbouring UTC dates and pick the ones that land on
+    `day` locally.
+    """
     ids = list(user_ids)
     if not ids:
         return {}
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+
+    window = [(day + timedelta(days=offset)).isoformat() for offset in (-1, 0, 1)]
     with db.connection() as conn:
         rows = conn.execute(
-            """SELECT s.user_id, p.slug, p.number, p.title, p.difficulty, p.tags
+            """SELECT s.user_id, s.solved_at, p.slug, p.number, p.title,
+                      p.difficulty, p.tags
                  FROM solved_problems s
                  JOIN problems p ON p.slug = s.slug
                  JOIN users u ON u.id = s.user_id
-                WHERE s.user_id = ANY(%s) AND s.solved_on = %s AND u.show_problems
+                WHERE s.user_id = ANY(%s) AND s.solved_on = ANY(%s) AND u.show_problems
                 ORDER BY s.solved_at""",
-            (ids, day.isoformat()),
+            (ids, window),
         ).fetchall()
+
     out: dict[int, list[dict[str, str]]] = {}
     for row in rows:
+        moment = parse_iso(row["solved_at"])
+        if moment is None or moment.astimezone(zone).date() != day:
+            continue
         out.setdefault(row["user_id"], []).append(
             {
                 "slug": row["slug"],
