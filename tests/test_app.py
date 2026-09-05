@@ -2067,9 +2067,33 @@ class TestDailyNudge:
         from app import main
 
         monkeypatch.setattr(main, "NUDGE_HOUR", 20)
-        response = self._fire(client)
-        assert response.json()["groups_at_nudge_hour"] == 0
+        body = self._fire(client).json()
+        assert body["acted_on"] == []
+        assert body["not_their_hour"], "a quiet run should say which groups it skipped"
         assert self._nudges(client) == []
+
+    def test_the_response_explains_who_was_skipped_and_why(self, client, monkeypatch):
+        """"sent: 0" alone cannot tell a broken cron from a quiet evening."""
+        from app import main, store
+
+        self._group_at_hour(client, 20, monkeypatch)
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+        seed_activity("dana", days_back=1)  # dana solved, sam did not
+        store.set_nudges(store.get_user_by_handle("sam")["id"], False)
+
+        body = self._fire(client).json()
+        reasons = body["acted_on"][0]["skipped"]
+        assert reasons["dana"] == "already solved today"
+        assert reasons["sam"] == "reminders turned off"
+
+    def test_a_quiet_run_names_the_groups_it_passed_over(self, client, monkeypatch):
+        from app import main
+
+        self._group_at_hour(client, 9, monkeypatch)
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+        body = self._fire(client).json()
+        assert body["nudge_hour"] == 20
+        assert body["not_their_hour"][0]["local_hour"] == 9
 
     def test_nobody_is_nudged_twice_in_a_day(self, client, monkeypatch):
         self._group_at_hour(client, 20, monkeypatch)

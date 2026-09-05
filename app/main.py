@@ -1250,8 +1250,12 @@ async def cron_sync(request: Request):
 NUDGE_HOUR = int(os.environ.get("NUDGE_HOUR", "20"))
 
 
-async def nudge_group(group: dict[str, Any], settings) -> list[str]:
-    """Email members of one group who have not solved yet today. Returns addresses."""
+async def nudge_group(group: dict[str, Any], settings) -> dict[str, Any]:
+    """Email members of one group who have not solved yet today.
+
+    Returns who was emailed and why everyone else was not, because "nothing
+    happened" is otherwise indistinguishable from "nothing was meant to happen".
+    """
     members = store.members_of(group["id"])
     today = board_today(group)
 
@@ -1267,15 +1271,25 @@ async def nudge_group(group: dict[str, Any], settings) -> list[str]:
     stamp = today.isoformat()
     url = f"{settings.base_url}/g/{group['id']}"
     sent: list[str] = []
+    skipped: dict[str, str] = {}
 
     for member in data.members:
         user = member.user
-        if member.stats.done_today or not member.is_tracked:
+        if not member.is_tracked:
+            skipped[member.name] = "no LeetCode account linked"
             continue
-        if not user.get("nudge_enabled") or not user.get("email"):
+        if member.stats.done_today:
+            skipped[member.name] = "already solved today"
+            continue
+        if not user.get("nudge_enabled"):
+            skipped[member.name] = "reminders turned off"
+            continue
+        if not user.get("email"):
+            skipped[member.name] = "no email address"
             continue
         if user.get("last_nudged_on") == stamp:
-            continue  # already reminded today, from this group or another
+            skipped[member.name] = "already reminded today"
+            continue
         try:
             await mailer.send(
                 settings,
@@ -1287,10 +1301,11 @@ async def nudge_group(group: dict[str, Any], settings) -> list[str]:
             )
         except mailer.MailError as exc:
             log.warning("nudge to %s failed: %s", user["email"], exc)
+            skipped[member.name] = f"sending failed: {exc}"
             continue
         store.mark_nudged(user["id"], stamp)
         sent.append(user["email"])
-    return sent
+    return {"group": group["name"], "day": stamp, "sent": sent, "skipped": skipped}
 
 
 @app.post("/api/cron/nudge")
@@ -1303,16 +1318,30 @@ async def cron_nudge(request: Request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     sent: list[str] = []
-    considered = 0
+    acted: list[dict[str, Any]] = []
+    waiting: list[dict[str, Any]] = []
+
     for group in store.all_groups():
-        if hour_in(group.get("timezone")) != NUDGE_HOUR:
+        local_hour = hour_in(group.get("timezone"))
+        if local_hour != NUDGE_HOUR:
+            waiting.append(
+                {"group": group["name"], "timezone": group["timezone"],
+                 "local_hour": local_hour}
+            )
             continue
-        considered += 1
-        sent.extend(await nudge_group(group, settings))
+        result = await nudge_group(group, settings)
+        sent.extend(result["sent"])
+        acted.append(result)
 
     return JSONResponse(
-        {"groups_at_nudge_hour": considered, "sent": len(sent),
-         "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        {
+            "nudge_hour": NUDGE_HOUR,
+            "sent": len(sent),
+            "acted_on": acted,
+            # The usual reason for a quiet run: it is simply not 8pm anywhere yet.
+            "not_their_hour": waiting,
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
     )
 
 
