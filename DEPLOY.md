@@ -137,6 +137,12 @@ pg_dump "$DATABASE_URL" > backup-$(date +%F).sql
 Restore with `psql "$DATABASE_URL" < backup.sql`. Neon's free tier does not keep
 long backup history, so if the group matters to you, run this occasionally.
 
+**No outbound email on the free tier.** Render blocks SMTP ports 25, 465 and 587 on
+free web services, so verification codes cannot be delivered from one. Google sign-in
+works regardless. To turn on email sign-up you need either a paid Render instance, or a
+provider with an HTTP API — the Resend backend in `mailer.py` is already written and
+needs only a verified sending domain.
+
 **Refreshing activity.** The app re-syncs anyone whose data is stale when their board
 is viewed, so this one is optional. Set `CRON_TOKEN` and hit it on a schedule if you
 want boards warm before people look:
@@ -145,17 +151,21 @@ want boards warm before people look:
 curl -X POST https://YOUR-DOMAIN/api/cron/sync -H "Authorization: Bearer $CRON_TOKEN"
 ```
 
-**Daily reminders.** This one is worth setting up: it is what makes the app reach
-people rather than waiting to be opened. Call it **hourly** — the app works out which
-groups are at their own local evening (`NUDGE_HOUR`, default 20:00) and emails only
-members who have not solved yet. Nobody is emailed twice in a day, and anyone can turn
-it off in their settings.
+**No outbound email on the free tier.** Render blocks SMTP ports 25, 465 and 587 on
+free web services, so verification codes cannot be delivered from one. Google sign-in
+works regardless. To turn on email sign-up you need either a paid Render instance, or a
+provider with an HTTP API — the Resend backend in `mailer.py` is already written and
+needs only a verified sending domain.
+
+**Refreshing activity.** The app re-syncs anyone whose data is stale when their board
+is viewed, so this one is optional. Set `CRON_TOKEN` and hit it on a schedule if you
+want boards warm before people look:
 
 ```bash
-curl -X POST https://YOUR-DOMAIN/api/cron/nudge -H "Authorization: Bearer $CRON_TOKEN"
+curl -X POST https://YOUR-DOMAIN/api/cron/sync -H "Authorization: Bearer $CRON_TOKEN"
 ```
 
-Add it on cron-job.org next to the keep-alive ping.
+Add it on cron-job.org next to the keep-alive ping if you want it.
 
 The token can go in an `Authorization: Bearer …` header, or — if your scheduler's free
 tier has no header fields, as cron-job.org's does not — simply paste the token on its

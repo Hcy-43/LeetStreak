@@ -52,9 +52,6 @@ services:
       # compute allows around a hundred, so this is still conservative.
       - key: DB_POOL_MAX
         value: "10"
-      # Shared secret for the hourly reminder + sync endpoints.
+      # Shared secret for the sync endpoint.
       - key: CRON_TOKEN
         generateValue: true
-      # Hour, on each group's own clock, when reminders go out.
-      - key: NUDGE_HOUR
-        value: "20"

@@ -484,16 +484,6 @@ def all_groups() -> list[dict[str, Any]]:
         return [dict(r) for r in conn.execute("SELECT * FROM groups ORDER BY id").fetchall()]
 
 
-def set_nudges(user_id: int, enabled: bool) -> None:
-    with db.transaction() as conn:
-        conn.execute("UPDATE users SET nudge_enabled = %s WHERE id = %s", (enabled, user_id))
-
-
-def mark_nudged(user_id: int, day: str) -> None:
-    with db.transaction() as conn:
-        conn.execute("UPDATE users SET last_nudged_on = %s WHERE id = %s", (day, user_id))
-
-
 def set_group_timezone(group_id: int, timezone_name: str) -> None:
     with db.transaction() as conn:
         conn.execute(

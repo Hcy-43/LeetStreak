@@ -952,19 +952,6 @@ async def save_settings(
     return redirect("/settings", "Saved. Your activity has been refreshed.")
 
 
-@app.post("/settings/nudges")
-async def set_nudges(request: Request, enabled: str = Form(default="")):
-    user = require_user(request)
-    if not user:
-        return redirect("/start?next=/settings")
-    on = enabled == "on"
-    store.set_nudges(user["id"], on)
-    return redirect(
-        "/settings",
-        "Daily reminders on." if on else "Daily reminders off.",
-    )
-
-
 @app.post("/settings/problems")
 async def set_show_problems(request: Request, enabled: str = Form(default="")):
     user = require_user(request)
@@ -1066,7 +1053,6 @@ async def group_board(
             "is_owner": group["owner_id"] == user["id"],
             "range_options": board.RANGE_OPTIONS,
             "timezones": timezone_choices(group.get("timezone")),
-            "nudge_hour": NUDGE_HOUR,
         },
     )
 
@@ -1193,15 +1179,6 @@ async def join_group(request: Request, code: str):
 # ----------------------------------------------------------------------------- api
 
 
-async def cron_body(request: Request) -> dict[str, Any]:
-    """The JSON body, if there is one. Used for the optional `force` flag."""
-    try:
-        parsed = json.loads((await request.body()).decode("utf-8", "replace"))
-    except ValueError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
 async def cron_authorised(request: Request, settings) -> bool:
     """Accept the shared secret from wherever the scheduler can put it.
 
@@ -1250,111 +1227,6 @@ async def cron_sync(request: Request):
             "synced": len(results),
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "results": {str(k): v for k, v in results.items()},
-        }
-    )
-
-
-# The hour, on each group's own clock, when reminders go out. An hourly cron hits
-# the endpoint below; the app works out whose evening it currently is.
-NUDGE_HOUR = int(os.environ.get("NUDGE_HOUR", "20"))
-
-
-async def nudge_group(group: dict[str, Any], settings) -> dict[str, Any]:
-    """Email members of one group who have not solved yet today.
-
-    Returns who was emailed and why everyone else was not, because "nothing
-    happened" is otherwise indistinguishable from "nothing was meant to happen".
-    """
-    members = store.members_of(group["id"])
-    today = board_today(group)
-
-    # Accuracy matters more than speed here: nudging someone who already solved is
-    # the one failure that would make people turn these off.
-    await sync.sync_users([m for m in members if sync.is_linked(m)], settings)
-
-    data = board.build_board(
-        members, today, board.DEFAULT_RANGE, since=None,
-        timezone_name=group.get("timezone"),
-    )
-    done = [m.name for m in data.members if m.stats.done_today]
-    stamp = today.isoformat()
-    url = f"{settings.base_url}/g/{group['id']}"
-    sent: list[str] = []
-    skipped: dict[str, str] = {}
-
-    for member in data.members:
-        user = member.user
-        if not member.is_tracked:
-            skipped[member.name] = "no LeetCode account linked"
-            continue
-        if member.stats.done_today:
-            skipped[member.name] = "already solved today"
-            continue
-        if not user.get("nudge_enabled"):
-            skipped[member.name] = "reminders turned off"
-            continue
-        if not user.get("email"):
-            skipped[member.name] = "no email address"
-            continue
-        if user.get("last_nudged_on") == stamp:
-            skipped[member.name] = "already reminded today"
-            continue
-        try:
-            await mailer.send(
-                settings,
-                user["email"],
-                f"You have not solved today - {group['name']}",
-                mailer.nudge_body(
-                    member.name, group["name"], member.stats.current_streak, done, url
-                ),
-            )
-        except mailer.MailError as exc:
-            log.warning("nudge to %s failed: %s", user["email"], exc)
-            skipped[member.name] = f"sending failed: {exc}"
-            continue
-        store.mark_nudged(user["id"], stamp)
-        sent.append(user["email"])
-    return {"group": group["name"], "day": stamp, "sent": sent, "skipped": skipped}
-
-
-@app.post("/api/cron/nudge")
-async def cron_nudge(request: Request):
-    """Call hourly. Only groups whose local time is NUDGE_HOUR are acted on."""
-    settings = get_settings()
-    if not settings.cron_token:
-        return JSONResponse({"error": "CRON_TOKEN is not configured"}, status_code=404)
-    if not await cron_authorised(request, settings):
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    # `{"token": "...", "force": true}` ignores the clock, so a reminder can be
-    # tested without waiting for the evening or moving NUDGE_HOUR about.
-    force = bool((await cron_body(request)).get("force"))
-
-    sent: list[str] = []
-    acted: list[dict[str, Any]] = []
-    waiting: list[dict[str, Any]] = []
-
-    for group in store.all_groups():
-        local_hour = hour_in(group.get("timezone"))
-        if local_hour != NUDGE_HOUR and not force:
-            waiting.append(
-                {"group": group["name"], "timezone": group["timezone"],
-                 "local_hour": local_hour}
-            )
-            continue
-        result = await nudge_group(group, settings)
-        sent.extend(result["sent"])
-        acted.append(result)
-
-    return JSONResponse(
-        {
-            "nudge_hour": NUDGE_HOUR,
-            "forced": force,
-            "sent": len(sent),
-            "acted_on": acted,
-            # The usual reason for a quiet run: it is simply not 8pm anywhere yet.
-            "not_their_hour": waiting,
-            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
     )
 

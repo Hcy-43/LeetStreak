@@ -90,34 +90,6 @@ async def send(settings: Settings, to: str, subject: str, body: str) -> None:
     await asyncio.to_thread(_send_smtp, settings, _build(settings, to, subject, body))
 
 
-def nudge_body(name: str, group: str, streak: int, done: list[str], url: str) -> str:
-    """The whole point of the app is that someone notices. This is that someone."""
-    if streak > 0:
-        opening = (
-            f"Your {streak}-day streak is still alive, but it ends at midnight "
-            f"unless you solve something today."
-        )
-    else:
-        opening = "You have not solved anything today."
-
-    if len(done) == 1:
-        peers = f"{done[0]} has already gone today."
-    elif len(done) == 2:
-        peers = f"{done[0]} and {done[1]} have already gone today."
-    elif done:
-        peers = f"{', '.join(done[:-1])} and {done[-1]} have already gone today."
-    else:
-        peers = "Nobody in the group has gone yet today - you could be first."
-
-    return (
-        f"{name},\n\n"
-        f"{opening}\n\n"
-        f"{peers}\n\n"
-        f"{group}: {url}\n\n"
-        f"To stop these, turn off the daily reminder in your settings.\n"
-    )
-
-
 def verification_body(code: str, minutes: int) -> str:
     return (
         f"Your LeetStreak verification code is:\n\n"

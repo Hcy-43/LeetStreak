@@ -25,9 +25,6 @@ CREATE TABLE IF NOT EXISTS users (
     leetcode_username TEXT    NOT NULL DEFAULT '',
     -- Whether your group can see which problems you solved, not just that you did.
     show_problems     BOOLEAN NOT NULL DEFAULT true,
-    -- Evening reminder when you have not solved and your group has.
-    nudge_enabled     BOOLEAN NOT NULL DEFAULT true,
-    last_nudged_on    TEXT    NOT NULL DEFAULT '',
     github_login      TEXT    NOT NULL DEFAULT '',
     github_repo       TEXT    NOT NULL DEFAULT '',
     timezone          TEXT    NOT NULL DEFAULT 'UTC',
@@ -137,10 +134,10 @@ MIGRATIONS: list[str] = [
     SCHEMA,
     # Deployed databases predate the group clock.
     "ALTER TABLE groups ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';",
-    """
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS nudge_enabled BOOLEAN NOT NULL DEFAULT true;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_nudged_on TEXT NOT NULL DEFAULT '';
-    """,
+    # Evening reminders, added and then removed: Render blocks outbound SMTP on
+    # free instances, so they could never be delivered. Kept as a no-op so the
+    # migration numbering stays stable for databases that already ran it.
+    "SELECT 1;",
     # Which problems, not just how many.
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS show_problems BOOLEAN NOT NULL DEFAULT true;
@@ -166,6 +163,11 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE problems ADD COLUMN IF NOT EXISTS number TEXT NOT NULL DEFAULT '';
     ALTER TABLE problems ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+    """,
+    # Reminders are gone; so are their columns.
+    """
+    ALTER TABLE users DROP COLUMN IF EXISTS nudge_enabled;
+    ALTER TABLE users DROP COLUMN IF EXISTS last_nudged_on;
     """,
 ]
 

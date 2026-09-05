@@ -46,22 +46,6 @@
   </form>
 </section>
 
-<section class="panel narrow">
-  <h2>Daily reminder</h2>
-  <p class="hint">
-    An email in the evening, on your group's clock, if you have not solved and your
-    group has. Nothing is sent on days you have already gone.
-  </p>
-  <form method="post" action="/settings/nudges" class="stacked-form">
-    <label class="checkline">
-      <input type="checkbox" name="enabled" value="on"
-             {{ 'checked' if user.nudge_enabled }}>
-      Remind me
-    </label>
-    <button type="submit" class="btn ghost">Save</button>
-  </form>
-</section>
-
 {% if user.password_hash %}
 <section class="panel narrow">
   <h2>Change password</h2>
