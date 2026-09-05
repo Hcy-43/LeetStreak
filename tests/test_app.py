@@ -1231,6 +1231,35 @@ class TestLocalDayBucketing:
         stats = compute_stats({date(2026, 9, 5): 1}, date(2026, 9, 4), streak_since=date(2026, 9, 4))
         assert stats.done_today is False
 
+    def test_attempts_without_an_accept_are_not_a_solved_day(self):
+        """A streak here means you solved something, not that you showed up.
+
+        The calendar counts every submission including failures; the timestamped
+        list counts only accepted ones. Inside the window, the latter wins.
+        """
+        from app.board import reconcile
+
+        utc = {date(2026, 9, 2): 1, date(2026, 9, 3): 4, date(2026, 9, 4): 1}
+        local = {date(2026, 9, 2): 1, date(2026, 9, 4): 1}  # nothing accepted on the 3rd
+        merged = reconcile(utc, local)
+        assert date(2026, 9, 3) not in merged
+
+    def test_such_a_day_breaks_the_streak(self):
+        from app.board import reconcile
+        from app.streaks import compute_stats
+
+        utc = {date(2026, 9, 2): 1, date(2026, 9, 3): 4, date(2026, 9, 4): 1}
+        local = {date(2026, 9, 2): 1, date(2026, 9, 4): 1}
+        stats = compute_stats(reconcile(utc, local), date(2026, 9, 4))
+        assert stats.current_streak == 1  # today only; the 3rd is a gap
+
+    def test_older_days_keep_their_attempt_counts(self):
+        """Nothing better exists for them - there are no timestamps that far back."""
+        from app.board import reconcile
+
+        merged = reconcile({date(2026, 6, 1): 5}, {date(2026, 9, 2): 1})
+        assert merged[date(2026, 6, 1)] == 5
+
     def test_older_history_keeps_its_utc_buckets(self):
         """The timestamp window is only 20 submissions deep."""
         from app.board import reconcile

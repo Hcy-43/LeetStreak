@@ -67,6 +67,13 @@ window those cover — typically weeks — days are cut on real submission times
 group's timezone. Older history keeps its UTC buckets, which is close enough for squares
 nobody is checking to the hour.
 
+The two sources also count different things, deliberately. LeetCode's calendar counts
+every submission, including failed ones; the timestamped list counts only accepted ones.
+**A streak here means you solved something, not that you showed up** — inside the
+timestamped window, a day of attempts with nothing accepted does not hold up a streak.
+Days older than that window keep the calendar's attempt counts, because nothing better
+exists for them.
+
 Nothing after today is ever counted, on any clock.
 
 ## Accounts

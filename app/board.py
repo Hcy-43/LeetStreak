@@ -129,9 +129,15 @@ def reconcile(utc_counts: dict[date, int], local: dict[date, int]) -> dict[date,
     midnights relabelled as local ones. Anything older keeps its UTC bucket, which
     is close enough for squares nobody is checking to the hour.
 
+    The two sources also count different things, and that is deliberate. The
+    calendar counts every submission, including failed ones; the timestamped list
+    counts only accepted ones. Inside the window a day of attempts with nothing
+    accepted is therefore *not* a solved day, and will not hold up a streak - which
+    is the point of a streak here. Older days keep the calendar's attempt counts,
+    because nothing better exists for them.
+
     LeetCode caps the timestamped window at 20 accepted submissions, so the oldest
-    local day can be short a few solves. That moves a square's shade, never whether
-    it is green.
+    local day can be short a few solves. That moves a square's shade.
     """
     if not local:
         return utc_counts
