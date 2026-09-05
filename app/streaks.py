@@ -63,7 +63,11 @@ def compute_stats(
     people, not one you brought with you. Left unset (your own home page) the streak
     is measured over your whole history.
     """
-    active = {day for day, count in days.items() if count > 0}
+    # Never count a day that has not happened yet on this board's clock. LeetCode
+    # buckets submissions by UTC, so an evening solve west of Greenwich is dated
+    # tomorrow - and counting it inflated "longest" and "active days" while the grid,
+    # which does hide future days, showed nothing. The two disagreed on screen.
+    active = {day for day, count in days.items() if count > 0 and day <= today}
     if not active:
         return Stats(0, 0, 0, 0, False, False, None, _missed(streak_since, today, set()))
 
@@ -102,7 +106,7 @@ def compute_stats(
         total_solved=sum(
             count
             for day, count in days.items()
-            if count > 0 and (since is None or day >= since)
+            if count > 0 and day <= today and (since is None or day >= since)
         ),
         done_today=done_today,
         at_risk=current > 0 and not done_today,

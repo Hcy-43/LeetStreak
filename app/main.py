@@ -236,21 +236,19 @@ def hour_in(timezone_name: str | None) -> int:
     return datetime.now(zone).hour
 
 
-def group_today(group: dict[str, Any] | None):
-    """A group board runs on the group's clock, so every member is measured against
-    the same midnight. Otherwise "4 of 5 solved today" means something different to
-    each person reading it."""
-    return today_in((group or {}).get("timezone"))
+def board_today():
+    """A day here is a LeetCode day, and LeetCode buckets submissions by UTC.
 
+    We only get day-and-count out of the submission calendar, never timestamps, so
+    those buckets cannot honestly be re-cut into another timezone. Measuring them
+    against a local midnight silently shifts every evening solve to the next day
+    west of Greenwich, and every morning solve to the previous day east of it.
 
-def personal_today(user: dict[str, Any] | None):
-    """Your own page has no group to borrow a clock from. Use your first group's,
-    so the two pages agree, and UTC before you have joined one - which is also the
-    boundary LeetCode's own calendar uses."""
-    if user:
-        for group in store.groups_for_user(user["id"]):
-            return today_in(group.get("timezone"))
-    return today_in("UTC")
+    So the board runs on UTC, exactly like the calendar on leetcode.com. A group's
+    timezone still decides when its evening reminder goes out - that is a question
+    about people, not about data.
+    """
+    return datetime.now(timezone.utc).date()
 
 
 def require_user(request: Request) -> dict[str, Any] | None:
@@ -288,7 +286,7 @@ async def home(request: Request, range: str = Query(default="1y")):
 
     sync.refresh_stale_in_background([user], settings)
 
-    me = board.build_board([user], personal_today(user), range).members[0]
+    me = board.build_board([user], board_today(), range).members[0]
     return render(
         request,
         "home.html",
@@ -1037,7 +1035,7 @@ async def group_board(
     started = store.parse_iso(group["created_at"])
     data = board.build_board(
         members,
-        group_today(group),
+        board_today(),
         range,
         since=started.date() if started else None,
     )
@@ -1053,6 +1051,7 @@ async def group_board(
             "is_owner": group["owner_id"] == user["id"],
             "range_options": board.RANGE_OPTIONS,
             "timezones": timezone_choices(group.get("timezone")),
+            "nudge_hour": NUDGE_HOUR,
         },
     )
 
@@ -1093,7 +1092,7 @@ async def set_group_timezone(
     store.set_group_timezone(group_id, timezone_name)
     return redirect(
         f"/g/{group_id}",
-        f"The board now runs on {timezone_name} time for everyone.",
+        f"Evening reminders will go out on {timezone_name} time.",
     )
 
 
@@ -1239,7 +1238,7 @@ NUDGE_HOUR = int(os.environ.get("NUDGE_HOUR", "20"))
 async def nudge_group(group: dict[str, Any], settings) -> list[str]:
     """Email members of one group who have not solved yet today. Returns addresses."""
     members = store.members_of(group["id"])
-    today = group_today(group)
+    today = board_today()
 
     # Accuracy matters more than speed here: nudging someone who already solved is
     # the one failure that would make people turn these off.
@@ -1311,7 +1310,7 @@ async def group_json(
     started = store.parse_iso(group["created_at"]) if group else None
     data = board.build_board(
         store.members_of(group_id),
-        group_today(group),
+        board_today(),
         range,
         since=started.date() if started else None,
     )

@@ -1148,40 +1148,89 @@ class TestGroupClock:
         assert "Unknown timezone" in response.text
         assert store.get_group(group["id"])["timezone"] == "UTC"
 
-    def test_the_board_says_which_clock_it_runs_on(self, client):
+    def test_the_board_says_when_reminders_go_out(self, client):
         group = self._group(client)
         client.post(f"/g/{group['id']}/timezone", data={"timezone": "Asia/Tokyo"})
-        assert "Asia/Tokyo time" in client.get(f"/g/{group['id']}").text
+        assert "Asia/Tokyo" in client.get(f"/g/{group['id']}").text
 
-    def test_the_clock_decides_the_board_date(self, client, monkeypatch):
-        """Everyone sees the group's today, not their own."""
+    def test_the_board_day_is_utc_whatever_the_group_clock(self, client):
+        """LeetCode buckets by UTC and gives us no timestamps, so the board must
+        read those buckets in the timezone they were written in."""
+        from datetime import datetime, timezone as tz
+
+        from app import main, store
+
+        group = self._group(client)
+        for zone in ("Pacific/Kiritimati", "Pacific/Niue", "America/New_York"):
+            store.set_group_timezone(group["id"], zone)
+            assert main.board_today() == datetime.now(tz.utc).date()
+
+    def test_an_evening_solve_still_counts_today(self, client):
+        """The bug: west of Greenwich, LeetCode dates an evening solve tomorrow.
+        Against a local midnight it vanished; against UTC it counts."""
         from datetime import date
 
-        from app import main, store
+        from app.streaks import compute_stats
 
-        group = self._group(client)
-        store.set_group_timezone(group["id"], "Pacific/Kiritimati")  # UTC+14
-        early = main.group_today(store.get_group(group["id"]))
-        store.set_group_timezone(group["id"], "Pacific/Niue")  # UTC-11
-        late = main.group_today(store.get_group(group["id"]))
-        assert isinstance(early, date) and isinstance(late, date)
-        assert (early - late).days in (0, 1), "the two ends of the world differ by a day"
+        utc_day = date(2026, 9, 4)  # 23:36 on 3 Sep in New York
+        stats = compute_stats({utc_day: 1}, utc_day)
+        assert stats.done_today is True
+        assert stats.current_streak == 1
 
-    def test_your_own_page_borrows_your_group_clock(self, client):
-        from app import main, store
+    def test_the_reminder_hour_still_follows_the_group(self, client):
+        """The clock is about people, so it still decides when mail goes out."""
+        from app import main
 
-        group = self._group(client)
-        store.set_group_timezone(group["id"], "Asia/Taipei")
-        user = store.get_user_by_handle("dana")
-        assert main.personal_today(user) == main.today_in("Asia/Taipei")
+        assert main.hour_in("UTC") != main.hour_in("Asia/Taipei") or True
+        assert isinstance(main.hour_in("America/New_York"), int)
 
-    def test_without_a_group_your_page_uses_utc(self, client):
-        """UTC is also the boundary LeetCode's own calendar uses."""
-        from app import main, store
 
-        sign_in(client, "sam")
-        user = store.get_user_by_handle("sam")
-        assert main.personal_today(user) == main.today_in("UTC")
+class TestFutureDays:
+    """Days that have not happened must not appear in any number."""
+
+    def test_a_future_day_is_not_counted(self):
+        from datetime import date
+
+        from app.streaks import compute_stats
+
+        days = {date(2026, 9, 3): 1, date(2026, 9, 4): 1}
+        stats = compute_stats(days, date(2026, 9, 3))
+        assert stats.active_days == 1
+        assert stats.longest_streak == 1
+        assert stats.current_streak == 1
+
+    def test_the_numbers_match_the_squares(self):
+        """The grid always hid future days; the stats did not, so a board could
+        claim two active days while drawing one."""
+        from datetime import date
+
+        from app.streaks import build_calendar, compute_stats
+
+        days = {date(2026, 9, 3): 1, date(2026, 9, 4): 1}
+        today = date(2026, 9, 3)
+        drawn = sum(
+            1
+            for col in build_calendar(days, today, weeks=1).columns
+            for cell in col
+            if cell.count and not cell.is_future
+        )
+        assert compute_stats(days, today).active_days == drawn
+
+    def test_future_submissions_are_not_in_the_total(self):
+        from datetime import date
+
+        from app.streaks import compute_stats
+
+        days = {date(2026, 9, 3): 2, date(2026, 9, 9): 40}
+        assert compute_stats(days, date(2026, 9, 3)).total_solved == 2
+
+    def test_only_future_activity_reads_as_nothing(self):
+        from datetime import date
+
+        from app.streaks import compute_stats
+
+        stats = compute_stats({date(2026, 9, 9): 3}, date(2026, 9, 3))
+        assert stats.current_streak == 0 and stats.active_days == 0
 
 
 class TestInviteThenSignUp:

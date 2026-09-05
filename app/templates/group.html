@@ -11,7 +11,7 @@
       {% if board.since %}
         &middot; since {{ board.since.strftime('%-d %b %Y') }}
       {% endif %}
-      &middot; {{ group.timezone }} time
+      &middot; reminders {{ '%02d:00'|format(nudge_hour) }} {{ group.timezone }}
     </p>
   </div>
   <div class="page-actions">
@@ -199,13 +199,13 @@
         <button type="submit" class="btn ghost">Rename</button>
       </form>
       <form method="post" action="/g/{{ group.id }}/timezone" class="inline-form">
-        <label class="sr-only" for="group-tz">Group timezone</label>
+        <label class="sr-only" for="group-tz">Timezone for evening reminders</label>
         <select id="group-tz" name="timezone">
           {% for zone in timezones %}
             <option value="{{ zone }}" {{ 'selected' if zone == group.timezone }}>{{ zone }}</option>
           {% endfor %}
         </select>
-        <button type="submit" class="btn ghost">Set clock</button>
+        <button type="submit" class="btn ghost">Set reminder time</button>
       </form>
       <form method="post" action="/g/{{ group.id }}/invite/rotate" class="inline"
             data-confirm="Generate a new invite link? The current one stops working.">

@@ -55,23 +55,14 @@ today's on the board. LeetCode only exposes the last 20 accepted submissions, so
 cannot be backfilled — history accumulates from the first sync onwards. Anyone who would
 rather share only the squares can turn the titles off in settings.
 
-LeetCode reports its calendar in UTC and we store it exactly as given, rather than
-inventing our own boundary — so a day here matches what leetcode.com shows you.
+**A day here is a LeetCode day, which means UTC.** The submission calendar gives us a
+date and a count and never a timestamp, so those buckets cannot honestly be re-cut into
+another timezone: doing it shifts every evening solve west of Greenwich onto the next
+day, and every morning solve east of it onto the previous one. The board therefore reads
+them exactly as LeetCode wrote them, and the squares match your LeetCode profile.
 
-**The clock belongs to the group, not the person.** Each group has a timezone, set by
-its owner, and every member's streak and "solved today" is measured against that one
-midnight. Otherwise "4 of 5 solved today" would mean something different to each person
-reading it. Your own home page borrows the clock from your first group, and falls back
-to UTC before you have joined one.
-
-> **GitHub is parked.** An earlier version could also count commits from your GitHub
-> contribution graph or a LeetHub/LeetSync solutions repo. That is switched off to keep
-> the app to one thing. `app/sources/github.py` and its tests are untouched — set
-> `GITHUB_SOURCE_ENABLED = True` in `app/sync.py` and restore the two fields to
-> `settings.html` to bring it back. Stored `github_login` / `github_repo` values are
-> preserved, not wiped, so nobody loses their settings in the meantime.
->
-> GitHub *sign-in* is unaffected and still works if you configure it.
+A group still has a timezone, but it decides one thing only: when the evening reminder
+goes out. That is a question about people, not about data.
 
 ## Accounts
 
