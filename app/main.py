@@ -1193,6 +1193,15 @@ async def join_group(request: Request, code: str):
 # ----------------------------------------------------------------------------- api
 
 
+async def cron_body(request: Request) -> dict[str, Any]:
+    """The JSON body, if there is one. Used for the optional `force` flag."""
+    try:
+        parsed = json.loads((await request.body()).decode("utf-8", "replace"))
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 async def cron_authorised(request: Request, settings) -> bool:
     """Accept the shared secret from wherever the scheduler can put it.
 
@@ -1317,13 +1326,17 @@ async def cron_nudge(request: Request):
     if not await cron_authorised(request, settings):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
+    # `{"token": "...", "force": true}` ignores the clock, so a reminder can be
+    # tested without waiting for the evening or moving NUDGE_HOUR about.
+    force = bool((await cron_body(request)).get("force"))
+
     sent: list[str] = []
     acted: list[dict[str, Any]] = []
     waiting: list[dict[str, Any]] = []
 
     for group in store.all_groups():
         local_hour = hour_in(group.get("timezone"))
-        if local_hour != NUDGE_HOUR:
+        if local_hour != NUDGE_HOUR and not force:
             waiting.append(
                 {"group": group["name"], "timezone": group["timezone"],
                  "local_hour": local_hour}
@@ -1336,6 +1349,7 @@ async def cron_nudge(request: Request):
     return JSONResponse(
         {
             "nudge_hour": NUDGE_HOUR,
+            "forced": force,
             "sent": len(sent),
             "acted_on": acted,
             # The usual reason for a quiet run: it is simply not 8pm anywhere yet.

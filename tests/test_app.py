@@ -2095,6 +2095,41 @@ class TestDailyNudge:
         assert body["nudge_hour"] == 20
         assert body["not_their_hour"][0]["local_hour"] == 9
 
+    def test_force_ignores_the_clock(self, client, monkeypatch):
+        """So a reminder can be tested without waiting until evening."""
+        from app import main
+
+        self._group_at_hour(client, 9, monkeypatch)  # nowhere near the nudge hour
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+
+        body = client.post(
+            "/api/cron/nudge", json={"token": "cron-secret", "force": True}
+        ).json()
+        assert body["forced"] is True
+        assert body["acted_on"], "forcing should act on the group anyway"
+
+    def test_force_still_needs_the_token(self, client, monkeypatch):
+        self._group_at_hour(client, 9, monkeypatch)
+        response = client.post(
+            "/api/cron/nudge", json={"token": "wrong", "force": True}
+        )
+        assert response.status_code == 401
+
+    def test_a_delivery_failure_is_reported_not_swallowed(self, client, monkeypatch):
+        """A wrong Gmail App Password must not look like a quiet evening."""
+        from app import main
+
+        self._group_at_hour(client, 20, monkeypatch)
+        monkeypatch.setattr(main, "NUDGE_HOUR", 20)
+
+        async def refuse(settings, to, subject, body):
+            raise main.mailer.MailError("535 Authentication failed")
+
+        monkeypatch.setattr(main.mailer, "send", refuse)
+        body = self._fire(client).json()
+        reasons = body["acted_on"][0]["skipped"]
+        assert any("535" in reason for reason in reasons.values())
+
     def test_nobody_is_nudged_twice_in_a_day(self, client, monkeypatch):
         self._group_at_hour(client, 20, monkeypatch)
         from app import main
