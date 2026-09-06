@@ -175,7 +175,9 @@ contributions calendar requires auth outright. LeetCode needs no token.
 
 Your home page keeps two things nobody else can see. **Worth another look** lists
 problems you solved at least three days ago and have not revisited since, as a checklist
-— tick them off once you have been back. Solving something again resets its clock, so a
+— tick them off once you have been back. It counts only what you solve from the day you
+get the feature onwards, so it starts empty rather than handing you a backlog of
+everything already in your history. Solving something again resets its clock, so a
 problem you just redid is not one you are told to redo. **Everything you have solved** is
 the same data as a plain history, newest day first.
 

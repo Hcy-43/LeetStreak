@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS users (
     leetcode_username TEXT    NOT NULL DEFAULT '',
     -- Whether your group can see which problems you solved, not just that you did.
     show_problems     BOOLEAN NOT NULL DEFAULT true,
+    -- Reviews only cover what you solve from here on. Without this, switching the
+    -- feature on buries you under every problem already in your history.
+    review_from       TEXT    NOT NULL DEFAULT '',
     github_login      TEXT    NOT NULL DEFAULT '',
     github_repo       TEXT    NOT NULL DEFAULT '',
     timezone          TEXT    NOT NULL DEFAULT 'UTC',
@@ -187,6 +190,13 @@ MIGRATIONS: list[str] = [
         reviewed_at TEXT    NOT NULL,
         PRIMARY KEY (user_id, slug)
     );
+    """,
+    # Reviews start from the day you have them, not the whole back catalogue.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS review_from TEXT NOT NULL DEFAULT '';
+    UPDATE users SET review_from = to_char(now() AT TIME ZONE 'UTC',
+                                           'YYYY-MM-DD"T"HH24:MI:SS+00:00')
+     WHERE review_from = '';
     """,
 ]
 

@@ -1155,7 +1155,22 @@ class TestAtRisk:
 class TestReviewQueue:
     """Coming back to a problem a few days later. Private to each person."""
 
-    def _solved(self, handle, slug, days_ago, number="1", title=None, difficulty="Easy"):
+    def _reviewing_since(self, handle, days_ago):
+        """Pretend this account has had the review list for a while."""
+        from datetime import datetime, timezone as tz
+
+        from app import db, store
+
+        user = store.get_user_by_handle(handle)
+        with db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET review_from = %s WHERE id = %s",
+                ((datetime.now(tz.utc) - timedelta(days=days_ago)).isoformat(), user["id"]),
+            )
+        return user
+
+    def _solved_at(self, handle, slug, days_ago, number="1", title=None, difficulty="Easy"):
+        """Record a solve without touching when reviews started."""
         from datetime import datetime, timezone as tz
 
         from app import store
@@ -1164,10 +1179,58 @@ class TestReviewQueue:
         store.save_problems([{"slug": slug, "number": number, "title": title or slug,
                               "difficulty": difficulty, "tags": ["Array"]}])
         store.record_solved(user["id"], [
+            {"slug": slug, "solved_at": datetime.now(tz.utc) - timedelta(days=days_ago)}
+        ])
+        return user
+
+    def _solved(self, handle, slug, days_ago, number="1", title=None, difficulty="Easy"):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        # These tests are about the three-day rule, not the start date.
+        self._reviewing_since(handle, 400)
+        user = store.get_user_by_handle(handle)
+        store.save_problems([{"slug": slug, "number": number, "title": title or slug,
+                              "difficulty": difficulty, "tags": ["Array"]}])
+        store.record_solved(user["id"], [
             {"slug": slug,
              "solved_at": datetime.now(tz.utc) - timedelta(days=days_ago)}
         ])
         return user
+
+    def test_history_from_before_you_had_the_feature_is_left_out(self, client):
+        """Otherwise the first thing you see is a backlog of twenty old problems."""
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        store.save_problems([{"slug": "old-one", "number": "9", "title": "Old One",
+                              "difficulty": "Easy", "tags": []}])
+        store.record_solved(user["id"], [
+            {"slug": "old-one", "solved_at": datetime.now(tz.utc) - timedelta(days=30)}
+        ])
+        # review_from is this account's creation, so a 30-day-old solve predates it.
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_anything_solved_after_that_point_does_count(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        self._reviewing_since("dana", 10)
+        user = self._reviewing_since("dana", 10)
+        self._solved_at("dana", "two-sum", days_ago=5)
+        assert [p["slug"] for p in store.problems_to_review(user["id"], utc_today())] == ["two-sum"]
+
+    def test_a_new_account_starts_with_an_empty_queue(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        assert user["review_from"], "sign-up must stamp a start date"
+        assert store.problems_to_review(user["id"], utc_today()) == []
 
     def test_a_problem_becomes_due_after_three_days(self, client):
         from app import store

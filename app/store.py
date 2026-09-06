@@ -155,8 +155,8 @@ def upsert_oauth_user(
             cursor = conn.execute(
                 """INSERT INTO users
                        (auth_provider, auth_subject, handle, email, display_name,
-                        avatar_url, github_login, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        avatar_url, github_login, created_at, review_from)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING id""",
                 (
                     provider,
@@ -167,6 +167,7 @@ def upsert_oauth_user(
                     avatar_url,
                     github_login,
                     now_iso(),
+                    now_iso(),  # reviews cover what you solve from here on
                 ),
             )
             user_id = cursor.fetchone()["id"]
@@ -200,8 +201,9 @@ def create_password_user(
             cursor = conn.execute(
                 """INSERT INTO users
                        (auth_provider, auth_subject, handle, email, password_hash,
-                        display_name, leetcode_username, timezone, created_at)
-                   VALUES ('password', %s, %s, %s, %s, %s, %s, %s, %s)
+                        display_name, leetcode_username, timezone, created_at,
+                        review_from)
+                   VALUES ('password', %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING id""",
                 (
                     email,
@@ -212,6 +214,7 @@ def create_password_user(
                     leetcode_username,
                     timezone_name,
                     now_iso(),
+                    now_iso(),  # reviews cover what you solve from here on
                 ),
             )
             user_id = cursor.fetchone()["id"]
@@ -505,7 +508,13 @@ def problems_to_review(
     Due once REVIEW_AFTER_DAYS have passed since you last solved it, and not shown
     again until you solve it afresh. Solving something again resets the clock, which
     is the behaviour you want: a problem you just redid is not one you need to redo.
+
+    Only counts solves from `users.review_from` onwards. Everything already in your
+    history when you got this feature stays out of it - otherwise the first thing
+    you see is a backlog of twenty old problems, which is a chore rather than a
+    habit.
     """
+    started = parse_iso((get_user(user_id) or {}).get("review_from"))
     try:
         zone = ZoneInfo(timezone_name or "UTC")
     except (ZoneInfoNotFoundError, ValueError):
@@ -530,6 +539,8 @@ def problems_to_review(
         solved = parse_iso(row["last_solved"])
         if solved is None:
             continue
+        if started is not None and solved < started:
+            continue  # solved before reviews were switched on
         reviewed = parse_iso(row["reviewed_at"])
         if reviewed is not None and reviewed >= solved:
             continue  # already looked at it since the last time it was solved
