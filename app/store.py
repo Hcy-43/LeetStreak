@@ -494,6 +494,115 @@ def problems_on(
     return out
 
 
+REVIEW_AFTER_DAYS = 3
+
+
+def problems_to_review(
+    user_id: int, today: date, timezone_name: str | None = None
+) -> list[dict[str, Any]]:
+    """Problems solved long enough ago to be worth a second look.
+
+    Due once REVIEW_AFTER_DAYS have passed since you last solved it, and not shown
+    again until you solve it afresh. Solving something again resets the clock, which
+    is the behaviour you want: a problem you just redid is not one you need to redo.
+    """
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+
+    with db.connection() as conn:
+        rows = conn.execute(
+            """SELECT s.slug, p.number, p.title, p.difficulty, p.tags,
+                      max(s.solved_at) AS last_solved,
+                      (SELECT r.reviewed_at FROM reviews r
+                        WHERE r.user_id = s.user_id AND r.slug = s.slug) AS reviewed_at
+                 FROM solved_problems s
+                 JOIN problems p ON p.slug = s.slug
+                WHERE s.user_id = %s
+                GROUP BY s.user_id, s.slug, p.number, p.title, p.difficulty, p.tags
+                ORDER BY max(s.solved_at)""",
+            (user_id,),
+        ).fetchall()
+
+    due: list[dict[str, Any]] = []
+    for row in rows:
+        solved = parse_iso(row["last_solved"])
+        if solved is None:
+            continue
+        reviewed = parse_iso(row["reviewed_at"])
+        if reviewed is not None and reviewed >= solved:
+            continue  # already looked at it since the last time it was solved
+        solved_on = solved.astimezone(zone).date()
+        waited = (today - solved_on).days
+        if waited < REVIEW_AFTER_DAYS:
+            continue
+        due.append(
+            {
+                "slug": row["slug"],
+                "number": row["number"],
+                "title": row["title"],
+                "difficulty": row["difficulty"],
+                "tags": list(row["tags"] or []),
+                "solved_on": solved_on,
+                "days_ago": waited,
+            }
+        )
+    due.sort(key=lambda p: p["days_ago"], reverse=True)
+    return due
+
+
+def mark_reviewed(user_id: int, slugs: Iterable[str]) -> int:
+    """Record that these were looked at again. Returns how many were saved."""
+    wanted = [s for s in slugs if s]
+    if not wanted:
+        return 0
+    stamp = now_iso()
+    with db.transaction() as conn, conn.cursor() as cursor:
+        cursor.executemany(
+            """INSERT INTO reviews (user_id, slug, reviewed_at) VALUES (%s, %s, %s)
+               ON CONFLICT (user_id, slug) DO UPDATE SET reviewed_at = excluded.reviewed_at""",
+            [(user_id, slug, stamp) for slug in wanted],
+        )
+    return len(wanted)
+
+
+def solve_history(
+    user_id: int, timezone_name: str | None = None, limit: int = 120
+) -> list[dict[str, Any]]:
+    """Everything solved, newest first, grouped into local days."""
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+
+    with db.connection() as conn:
+        rows = conn.execute(
+            """SELECT s.solved_at, p.slug, p.number, p.title, p.difficulty
+                 FROM solved_problems s
+                 JOIN problems p ON p.slug = s.slug
+                WHERE s.user_id = %s
+                ORDER BY s.solved_at DESC
+                LIMIT %s""",
+            (user_id, limit),
+        ).fetchall()
+
+    days: dict[date, list[dict[str, str]]] = {}
+    for row in rows:
+        moment = parse_iso(row["solved_at"])
+        if moment is None:
+            continue
+        days.setdefault(moment.astimezone(zone).date(), []).append(
+            {
+                "slug": row["slug"],
+                "number": row["number"],
+                "title": row["title"],
+                "difficulty": row["difficulty"],
+            }
+        )
+    return [{"day": day, "problems": items} for day, items in sorted(days.items(), reverse=True)]
+
+
 def set_show_problems(user_id: int, visible: bool) -> None:
     with db.transaction() as conn:
         conn.execute("UPDATE users SET show_problems = %s WHERE id = %s", (visible, user_id))

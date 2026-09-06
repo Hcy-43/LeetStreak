@@ -141,6 +141,38 @@
   .rank-bar { display: none; }
 }
 
+/* Coming back to a problem. Private to you, so it is quieter than the board. */
+.review { margin-bottom: 1.2rem; }
+.review h2, .history h2 { font-size: 1rem; margin: 0 0 .35rem; }
+.review-list { list-style: none; margin: .9rem 0; padding: 0; display: grid; gap: .3rem; }
+.review-list li { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+.review-list label {
+  display: flex; align-items: flex-start; gap: .7rem; padding: .6rem .8rem; cursor: pointer;
+}
+.review-list input { width: 17px; height: 17px; margin-top: .12rem; flex: none; }
+.review-what { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.review-what a { color: var(--text); text-decoration: none; font-weight: 500; font-size: .88rem; }
+.review-what a:hover { text-decoration: underline; }
+.review-meta { font-size: .72rem; color: var(--muted); }
+.review-list li:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+
+/* History: one row per day, densest thing on the page. */
+.history-list { list-style: none; margin: .9rem 0; padding: 0; display: grid; gap: .45rem; }
+.history-list li {
+  display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .8rem;
+  font-size: .84rem; padding-bottom: .45rem; border-bottom: 1px solid var(--border);
+}
+.history-list li:last-child { border-bottom: 0; }
+.history-day { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.history-problems a { color: var(--text); text-decoration: none; }
+.history-problems a:hover { text-decoration: underline; }
+.history-problems .diff { font-size: .58rem; margin-left: .2rem; vertical-align: .1em; }
+.history-problems .sep { color: var(--muted); margin-right: .3rem; }
+
+@media (max-width: 560px) {
+  .history-list li { grid-template-columns: minmax(0, 1fr); gap: .15rem; }
+}
+
 /* A miss is worth noticing, but it is not an error. */
 .stat.missed .value { color: var(--warn); }
 

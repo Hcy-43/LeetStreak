@@ -298,9 +298,9 @@ async def home(request: Request, range: str = Query(default="1y")):
 
     sync.refresh_stale_in_background([user], settings)
 
-    me = board.build_board(
-        [user], personal_today(user), range, timezone_name=_first_group_timezone(user)
-    ).members[0]
+    zone = _first_group_timezone(user)
+    today = personal_today(user)
+    me = board.build_board([user], today, range, timezone_name=zone).members[0]
     return render(
         request,
         "home.html",
@@ -309,8 +309,27 @@ async def home(request: Request, range: str = Query(default="1y")):
             "me": me,
             "groups": store.groups_for_user(user["id"]),
             "range_options": board.RANGE_OPTIONS,
+            "to_review": store.problems_to_review(user["id"], today, zone),
+            "review_after_days": store.REVIEW_AFTER_DAYS,
+            "history": store.solve_history(user["id"], zone),
         },
     )
+
+
+@app.post("/review")
+async def mark_reviewed(request: Request):
+    """Check off problems you have looked at again. Yours alone - no group sees this."""
+    user = require_user(request)
+    if not user:
+        return redirect("/start?next=/")
+
+    form = await request.form()
+    slugs = [str(slug) for slug in form.getlist("slug")]
+    saved = store.mark_reviewed(user["id"], slugs)
+    if not saved:
+        return redirect("/", "Tick something first.", "error")
+    noun = "problem" if saved == 1 else "problems"
+    return redirect("/", f"{saved} {noun} marked as reviewed.")
 
 
 @app.get("/login", response_class=HTMLResponse)

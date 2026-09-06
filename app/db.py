@@ -119,6 +119,16 @@ CREATE TABLE IF NOT EXISTS solved_problems (
 CREATE INDEX IF NOT EXISTS idx_solved_user_day
     ON solved_problems (user_id, solved_on DESC);
 
+-- Reviewing a problem you solved. A solve becomes due again REVIEW_AFTER_DAYS
+-- later; checking it off records a review, and it drops off the list until the
+-- next time you solve that problem.
+CREATE TABLE IF NOT EXISTS reviews (
+    user_id     INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    slug        TEXT    NOT NULL REFERENCES problems (slug) ON DELETE CASCADE,
+    reviewed_at TEXT    NOT NULL,
+    PRIMARY KEY (user_id, slug)
+);
+
 CREATE TABLE IF NOT EXISTS sync_state (
     user_id         INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     source          TEXT    NOT NULL,
@@ -169,9 +179,19 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users DROP COLUMN IF EXISTS nudge_enabled;
     ALTER TABLE users DROP COLUMN IF EXISTS last_nudged_on;
     """,
+    # Coming back to a problem a few days later.
+    """
+    CREATE TABLE IF NOT EXISTS reviews (
+        user_id     INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        slug        TEXT    NOT NULL REFERENCES problems (slug) ON DELETE CASCADE,
+        reviewed_at TEXT    NOT NULL,
+        PRIMARY KEY (user_id, slug)
+    );
+    """,
 ]
 
 TABLES = (
+    "reviews",
     "solved_problems",
     "problems",
     "sync_state",
@@ -189,6 +209,18 @@ _dsn: str | None = None
 
 def max_connections() -> int:
     return max(2, int(os.environ.get("DB_POOL_MAX", "10")))
+
+
+def is_local(url: str) -> bool:
+    """Whether a DSN points at this machine rather than a hosted database.
+
+    `postgresql:///name` has no host at all, which means a unix socket here.
+    Anything naming a real host is treated as remote, and therefore precious.
+    """
+    from urllib.parse import urlparse
+
+    host = urlparse(normalise_dsn(url)).hostname
+    return host in (None, "", "localhost", "127.0.0.1", "::1")
 
 
 def normalise_dsn(url: str) -> str:

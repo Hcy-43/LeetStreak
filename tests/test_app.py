@@ -1152,6 +1152,208 @@ class TestAtRisk:
         assert "at risk" not in body
 
 
+class TestReviewQueue:
+    """Coming back to a problem a few days later. Private to each person."""
+
+    def _solved(self, handle, slug, days_ago, number="1", title=None, difficulty="Easy"):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        user = store.get_user_by_handle(handle)
+        store.save_problems([{"slug": slug, "number": number, "title": title or slug,
+                              "difficulty": difficulty, "tags": ["Array"]}])
+        store.record_solved(user["id"], [
+            {"slug": slug,
+             "solved_at": datetime.now(tz.utc) - timedelta(days=days_ago)}
+        ])
+        return user
+
+    def test_a_problem_becomes_due_after_three_days(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=store.REVIEW_AFTER_DAYS)
+        due = store.problems_to_review(user["id"], utc_today())
+        assert [p["slug"] for p in due] == ["two-sum"]
+
+    def test_something_solved_today_is_not_due(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=0)
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_the_day_before_is_not_due_either(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=store.REVIEW_AFTER_DAYS - 1)
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_ticking_it_off_clears_it(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=5)
+        store.mark_reviewed(user["id"], ["two-sum"])
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_solving_it_again_resets_the_clock(self, client):
+        """A problem you just redid is not one you need to redo."""
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=9)
+        assert store.problems_to_review(user["id"], utc_today())
+        self._solved("dana", "two-sum", days_ago=0)
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_it_comes_back_after_a_review_then_a_fresh_solve(self, client):
+        """Reviewed a week ago, solved again since - it is owed another look."""
+        from datetime import datetime, timezone as tz
+
+        from app import db, store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=9)
+        store.mark_reviewed(user["id"], ["two-sum"])
+        # Age the review, so the later solve genuinely comes after it.
+        with db.transaction() as conn:
+            conn.execute(
+                "UPDATE reviews SET reviewed_at = %s WHERE user_id = %s",
+                ((datetime.now(tz.utc) - timedelta(days=7)).isoformat(), user["id"]),
+            )
+        self._solved("dana", "two-sum", days_ago=4)
+        assert [p["slug"] for p in store.problems_to_review(user["id"], utc_today())] == ["two-sum"]
+
+    def test_a_review_newer_than_the_last_solve_keeps_it_clear(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=9)
+        store.mark_reviewed(user["id"], ["two-sum"])
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_the_oldest_comes_first(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=4)
+        self._solved("dana", "3sum", days_ago=20, number="15")
+        due = store.problems_to_review(user["id"], utc_today())
+        assert [p["slug"] for p in due] == ["3sum", "two-sum"]
+
+    def test_it_shows_on_the_home_page(self, client):
+        sign_in(client, "dana")
+        self._solved("dana", "word-ladder", days_ago=6, number="127", title="Word Ladder")
+        body = client.get("/").text
+        assert "Worth another look" in body
+        assert "Word Ladder" in body
+        assert 'value="word-ladder"' in body
+
+    def test_the_section_is_absent_with_nothing_due(self, client):
+        sign_in(client, "dana")
+        assert "Worth another look" not in client.get("/").text
+
+    def test_checking_the_box_marks_it(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=5)
+        response = client.post("/review", data={"slug": "two-sum"}, follow_redirects=True)
+        assert "1 problem marked as reviewed" in response.text
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_several_at_once(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        user = self._solved("dana", "two-sum", days_ago=5)
+        self._solved("dana", "3sum", days_ago=6, number="15")
+        response = client.post(
+            "/review", data={"slug": ["two-sum", "3sum"]}, follow_redirects=True
+        )
+        assert "2 problems marked as reviewed" in response.text
+        assert store.problems_to_review(user["id"], utc_today()) == []
+
+    def test_submitting_nothing_says_so(self, client):
+        sign_in(client, "dana")
+        self._solved("dana", "two-sum", days_ago=5)
+        assert "Tick something first" in client.post(
+            "/review", data={}, follow_redirects=True
+        ).text
+
+    def test_one_persons_queue_is_their_own(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        dana = self._solved("dana", "two-sum", days_ago=5)
+        sign_in(client, "sam")
+        sam = store.get_user_by_handle("sam")
+        assert store.problems_to_review(sam["id"], utc_today()) == []
+        assert store.problems_to_review(dana["id"], utc_today())
+
+    def test_reviewing_is_not_visible_to_a_group(self, client):
+        """The review list is personal; a board must not leak it."""
+        from app import store
+
+        sign_in(client, "dana")
+        self._solved("dana", "two-sum", days_ago=5)
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        assert "Worth another look" not in client.get(f"/g/{group['id']}").text
+
+    def test_signing_out_blocks_the_post(self, client):
+        client.cookies.clear()
+        response = client.post("/review", data={"slug": "two-sum"}, follow_redirects=False)
+        assert response.status_code == 303
+        assert "/start" in response.headers["location"]
+
+
+class TestSolveHistory:
+    def test_it_groups_by_day_newest_first(self, client):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        store.save_problems([
+            {"slug": "a", "number": "1", "title": "A", "difficulty": "Easy", "tags": []},
+            {"slug": "b", "number": "2", "title": "B", "difficulty": "Hard", "tags": []},
+        ])
+        now = datetime.now(tz.utc)
+        store.record_solved(user["id"], [
+            {"slug": "a", "solved_at": now - timedelta(days=2)},
+            {"slug": "b", "solved_at": now},
+        ])
+        history = store.solve_history(user["id"])
+        assert len(history) == 2
+        assert history[0]["day"] > history[1]["day"]
+        assert history[0]["problems"][0]["title"] == "B"
+
+    def test_it_shows_on_the_home_page(self, client):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        sign_in(client, "dana")
+        user = store.get_user_by_handle("dana")
+        store.save_problems([{"slug": "lru-cache", "number": "146", "title": "LRU Cache",
+                              "difficulty": "Medium", "tags": []}])
+        store.record_solved(user["id"], [
+            {"slug": "lru-cache", "solved_at": datetime.now(tz.utc)}
+        ])
+        body = client.get("/").text
+        assert "Everything you have solved" in body
+        assert "LRU Cache" in body
+
+    def test_nothing_solved_means_no_section(self, client):
+        sign_in(client, "dana")
+        assert "Everything you have solved" not in client.get("/").text
+
+
 class TestGroupClock:
     """A board needs one shared "today", or the count means different things to
     different members."""

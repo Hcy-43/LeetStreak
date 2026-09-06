@@ -2,7 +2,7 @@
 
     uv run python scripts/seed_demo.py
 
-Signs nobody in: use handle sign-in as `dana` afterwards to view the board.
+Sign in afterwards as dana@example.com with the password printed at the end.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import random
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -74,6 +75,17 @@ def _pin_sync(user_id: int) -> None:
 
 def main() -> None:
     settings = get_settings()
+
+    # This script deletes and recreates accounts. Run against a hosted database by
+    # accident - a production DATABASE_URL left in .env, say - and it would take
+    # real people with it.
+    if not db.is_local(settings.database_url) and "--force" not in sys.argv:
+        raise SystemExit(
+            "Refusing to seed a remote database.\n"
+            f"  DATABASE_URL points at: {urlparse(db.normalise_dsn(settings.database_url)).hostname}\n"
+            "This script deletes accounts. If you really mean it, pass --force."
+        )
+
     db.configure(settings.database_url)
     db.init_db()
     random.seed(7)

@@ -171,6 +171,17 @@ a random key that changes on every restart and logs everyone out.
 GitHub source is skipped: unauthenticated GitHub allows 60 requests/hour, and the
 contributions calendar requires auth outright. LeetCode needs no token.
 
+## Coming back to a problem
+
+Your home page keeps two things nobody else can see. **Worth another look** lists
+problems you solved at least three days ago and have not revisited since, as a checklist
+— tick them off once you have been back. Solving something again resets its clock, so a
+problem you just redid is not one you are told to redo. **Everything you have solved** is
+the same data as a plain history, newest day first.
+
+Both are personal. Group boards show what you solved and when; they never show what you
+are reviewing.
+
 ## Keeping data fresh
 
 Activity is cached in Postgres. Loading a board kicks off a background refresh for anyone

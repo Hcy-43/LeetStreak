@@ -87,6 +87,65 @@
   {% endif %}
 </section>
 
+{% if to_review %}
+  <section class="panel review">
+    <h2>Worth another look</h2>
+    <p class="hint">
+      Solved at least {{ review_after_days }} days ago and not revisited since. Tick what
+      you have been back to. Only you can see this.
+    </p>
+    <form method="post" action="/review" class="review-form">
+      <ul class="review-list">
+        {% for problem in to_review %}
+          <li>
+            <label>
+              <input type="checkbox" name="slug" value="{{ problem.slug }}">
+              <span class="review-what">
+                <a href="https://leetcode.com/problems/{{ problem.slug }}/"
+                   target="_blank" rel="noopener noreferrer">
+                  {% if problem.number %}<span class="pnum">{{ problem.number }}.</span>{% endif %}
+                  {{ problem.title }}
+                </a>
+                <span class="review-meta">
+                  <span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty }}</span>
+                  &middot; {{ problem.days_ago }} days ago
+                  {% if problem.tags %}&middot; {{ problem.tags[:2] | join(' · ') }}{% endif %}
+                </span>
+              </span>
+            </label>
+          </li>
+        {% endfor %}
+      </ul>
+      <button type="submit" class="btn">Mark reviewed</button>
+    </form>
+  </section>
+{% endif %}
+
+{% if history %}
+  <section class="panel history">
+    <h2>Everything you have solved</h2>
+    <ol class="history-list">
+      {% for entry in history %}
+        <li>
+          <span class="history-day">{{ entry.day.strftime('%a %-d %b') }}</span>
+          <span class="history-problems">
+            {% for problem in entry.problems %}
+              <a href="https://leetcode.com/problems/{{ problem.slug }}/"
+                 target="_blank" rel="noopener noreferrer">
+                {% if problem.number %}{{ problem.number }}.{% endif %} {{ problem.title }}
+              </a><span class="diff {{ problem.difficulty | lower }}">{{ problem.difficulty[:1] }}</span>{% if not loop.last %}<span class="sep">,</span>{% endif %}
+            {% endfor %}
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+    <p class="hint">
+      Collected from the day LeetStreak started watching &mdash; LeetCode only exposes
+      your last 20 accepted submissions, so there is nothing earlier to fetch.
+    </p>
+  </section>
+{% endif %}
+
 <section class="page-head groups-head">
   <div>
     <h2>Your groups</h2>
