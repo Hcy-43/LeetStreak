@@ -73,10 +73,10 @@
           {% endif %}
           <span class="rank-name">{{ member.name }}</span>
           <span class="rank-bar" aria-hidden="true">
-            <span style="width: {{ (member.stats.missed_days / board.days_since_start * 100) | round }}%"></span>
+            <span style="width: {{ (member.stats.missed_days / member.days_tracked * 100) | round if member.days_tracked else 0 }}%"></span>
           </span>
           <span class="rank-value">
-            {{ member.stats.missed_days }}<span class="rank-of">/{{ board.days_since_start }}</span>
+            {{ member.stats.missed_days }}<span class="rank-of">/{{ member.days_tracked }}</span>
           </span>
         </li>
       {% endfor %}
@@ -131,7 +131,7 @@
       </div>
 
       <div class="member-graph">
-        {% with cal = member.calendar,
+        {% with owner_id = member.user.id, cal = member.calendar,
                 label = member.name ~ ': ' ~ member.stats.active_days ~ ' active days, '
                         ~ member.stats.total_solved ~ ' submissions in this window' %}
           {% include "_heatmap.html" %}

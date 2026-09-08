@@ -47,7 +47,7 @@
   </div>
 
   <div class="me-graph">
-    {% with cal = me.calendar,
+    {% with owner_id = me.user.id, cal = me.calendar,
             label = 'Your activity: ' ~ me.stats.active_days ~ ' active days' %}
       {% include "_heatmap.html" %}
     {% endwith %}

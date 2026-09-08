@@ -134,7 +134,11 @@ def utc_today():
 
 
 def backdate_group(group_id: int, days: int) -> None:
-    """Move a group's creation date into the past."""
+    """Move a group's creation date into the past, memberships included.
+
+    Members are measured from the day they joined, so moving the group without
+    moving them leaves everyone looking like they arrived this morning.
+    """
     from datetime import datetime, timedelta, timezone
 
     from app import db
@@ -142,6 +146,9 @@ def backdate_group(group_id: int, days: int) -> None:
     stamp = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
     with db.transaction() as conn:
         conn.execute("UPDATE groups SET created_at = %s WHERE id = %s", (stamp, group_id))
+        conn.execute(
+            "UPDATE memberships SET joined_at = %s WHERE group_id = %s", (stamp, group_id)
+        )
 
 
 def sign_in_as(client: TestClient, user_id: int) -> None:
@@ -1415,6 +1422,186 @@ class TestSolveHistory:
     def test_nothing_solved_means_no_section(self, client):
         sign_in(client, "dana")
         assert "Everything you have solved" not in client.get("/").text
+
+
+class TestJoiningLate:
+    """Nobody is measured on days before they were in the group."""
+
+    def _group_with_latecomer(self, client, group_age, joined_days_ago):
+        from datetime import datetime, timezone as tz
+
+        from app import db, store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+
+        now = datetime.now(tz.utc)
+        started = (now - timedelta(days=group_age)).isoformat(timespec="seconds")
+        joined = (now - timedelta(days=joined_days_ago)).isoformat(timespec="seconds")
+        with db.transaction() as conn:
+            conn.execute("UPDATE groups SET created_at = %s WHERE id = %s",
+                         (started, group["id"]))
+            conn.execute("UPDATE memberships SET joined_at = %s WHERE group_id = %s",
+                         (started, group["id"]))
+            conn.execute(
+                "UPDATE memberships SET joined_at = %s WHERE group_id = %s AND user_id = %s",
+                (joined, group["id"], store.get_user_by_handle("sam")["id"]),
+            )
+        return store.get_group(group["id"])
+
+    def _board(self, group):
+        from app import board, store
+
+        return board.build_board(
+            store.members_of(group["id"]), utc_today(), "1m",
+            since=store.parse_iso(group["created_at"]).date(),
+            timezone_name=group["timezone"],
+        )
+
+    def test_a_latecomer_is_not_blamed_for_earlier_days(self, client):
+        group = self._group_with_latecomer(client, group_age=10, joined_days_ago=3)
+        by_name = {m.name: m for m in self._board(group).members}
+        assert by_name["sam"].stats.missed_days == 3
+        assert by_name["dana"].stats.missed_days == 10
+
+    def test_the_denominator_is_their_own_time(self, client):
+        group = self._group_with_latecomer(client, group_age=10, joined_days_ago=3)
+        by_name = {m.name: m for m in self._board(group).members}
+        assert by_name["sam"].days_tracked == 4
+        assert by_name["dana"].days_tracked == 11
+
+    def test_their_squares_start_when_they_joined(self, client):
+        group = self._group_with_latecomer(client, group_age=10, joined_days_ago=3)
+        sam = {m.name: m for m in self._board(group).members}["sam"]
+        drawn = [c for col in sam.calendar.columns for c in col if not c.is_before_start
+                 and not c.is_future]
+        assert min(c.day for c in drawn) == sam.since
+
+    def test_a_founder_starts_with_the_group(self, client):
+        group = self._group_with_latecomer(client, group_age=10, joined_days_ago=3)
+        dana = {m.name: m for m in self._board(group).members}["dana"]
+        from app import store
+
+        assert dana.since == store.parse_iso(group["created_at"]).date()
+
+    def test_joining_today_means_nothing_missed(self, client):
+        group = self._group_with_latecomer(client, group_age=10, joined_days_ago=0)
+        sam = {m.name: m for m in self._board(group).members}["sam"]
+        assert sam.stats.missed_days == 0
+        assert sam.days_tracked == 1
+
+    def test_a_streak_is_measured_from_joining_too(self, client):
+        """Days solved before joining should not inflate the group streak."""
+        from app import store
+
+        group = self._group_with_latecomer(client, group_age=20, joined_days_ago=2)
+        seed_activity("sam", days_back=15)  # solved every day for a fortnight
+        sam = {m.name: m for m in self._board(group).members}["sam"]
+        assert sam.stats.current_streak == 3  # only since joining
+
+    def test_the_board_shows_the_shorter_denominator(self, client):
+        group = self._group_with_latecomer(client, group_age=10, joined_days_ago=3)
+        sign_in(client, "dana")
+        body = client.get(f"/g/{group['id']}").text
+        assert "/4" in body and "/11" in body
+
+
+class TestDayDetail:
+    """Clicking a square asks what was solved that day."""
+
+    def _solved_yesterday(self, handle, slug="two-sum"):
+        from datetime import datetime, timezone as tz
+
+        from app import store
+
+        user = store.get_user_by_handle(handle)
+        store.save_problems([{"slug": slug, "number": "1", "title": "Two Sum",
+                              "difficulty": "Easy", "tags": ["Array"]}])
+        when = datetime.now(tz.utc) - timedelta(days=1)
+        store.record_solved(user["id"], [{"slug": slug, "solved_at": when}])
+        return user, when.date()
+
+    def test_you_can_see_your_own_day(self, client):
+        sign_in(client, "dana")
+        user, day = self._solved_yesterday("dana")
+        payload = client.get(f"/api/day/{user['id']}/{day.isoformat()}.json").json()
+        assert [p["title"] for p in payload["problems"]] == ["Two Sum"]
+
+    def test_a_groupmate_can_see_it(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        user, day = self._solved_yesterday("dana")
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+        payload = client.get(f"/api/day/{user['id']}/{day.isoformat()}.json").json()
+        assert payload["problems"]
+
+    def test_a_stranger_cannot(self, client):
+        sign_in(client, "dana")
+        user, day = self._solved_yesterday("dana")
+        sign_in(client, "sam")  # no group in common
+        assert client.get(f"/api/day/{user['id']}/{day.isoformat()}.json").status_code == 404
+
+    def test_hiding_your_titles_hides_them_here_too(self, client):
+        from app import store
+
+        sign_in(client, "dana")
+        client.post("/groups", data={"name": "Daily grind"})
+        group = store.groups_for_user(store.get_user_by_handle("dana")["id"])[0]
+        user, day = self._solved_yesterday("dana")
+        store.set_show_problems(user["id"], False)
+        sign_in(client, "sam")
+        client.post(f"/join/{group['invite_code']}")
+        assert client.get(f"/api/day/{user['id']}/{day.isoformat()}.json").status_code == 404
+
+    def test_you_can_still_see_your_own_when_hidden(self, client):
+        """The toggle is about your group, not about you."""
+        from app import store
+
+        sign_in(client, "dana")
+        user, day = self._solved_yesterday("dana")
+        store.set_show_problems(user["id"], False)
+        assert client.get(f"/api/day/{user['id']}/{day.isoformat()}.json").status_code == 200
+
+    def test_signed_out_gets_nothing(self, client):
+        sign_in(client, "dana")
+        user, day = self._solved_yesterday("dana")
+        client.cookies.clear()
+        assert client.get(f"/api/day/{user['id']}/{day.isoformat()}.json").status_code == 404
+
+    def test_a_bad_date_is_rejected(self, client):
+        sign_in(client, "dana")
+        user = store_user(client, "dana")
+        assert client.get(f"/api/day/{user['id']}/not-a-date.json").status_code == 400
+
+    def test_a_day_with_no_titles_returns_an_empty_list(self, client):
+        sign_in(client, "dana")
+        user = store_user(client, "dana")
+        assert client.get(f"/api/day/{user['id']}/2020-01-01.json").json()["problems"] == []
+
+    def test_filled_squares_are_buttons(self, client):
+        sign_in(client, "dana")
+        seed_activity("dana", days_back=3)
+        body = client.get("/").text
+        assert "button" in body and "data-day=" in body
+
+    def test_empty_squares_are_not(self, client):
+        """Only days with something behind them are clickable."""
+        sign_in(client, "dana")
+        body = client.get("/").text
+        assert "data-day=" not in body
+
+
+def store_user(client, handle):
+    from app import store
+
+    return store.get_user_by_handle(handle)
 
 
 class TestGroupClock:

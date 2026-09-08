@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
 
 from . import store, sync
@@ -42,6 +43,18 @@ class MemberBoard:
     errors: list[str]
     # Titles solved on the board's today, when this person shares them.
     solved_today: list[dict[str, str]] = field(default_factory=list)
+    # When this person's own record starts: the later of the group's creation and
+    # the day they joined it. Nobody is measured on days before they were here.
+    since: date | None = None
+
+    @property
+    def days_tracked(self) -> int:
+        """Days this person has been on this board, today included."""
+        if self.since is None or self.today is None:
+            return 0
+        return (self.today - self.since).days + 1
+
+    today: date | None = None
 
     @property
     def name(self) -> str:
@@ -171,6 +184,19 @@ def build_board(
     window_start = week_start(today) - timedelta(weeks=weeks - 1)
     if since is not None:
         window_start = max(window_start, since)
+    def joined_on(member: dict[str, Any]) -> date | None:
+        """The later of the group's start and this person's arrival."""
+        if since is None:
+            return None
+        moment = store.parse_iso(member.get("member_since"))
+        if moment is None:
+            return since
+        try:
+            zone = ZoneInfo(timezone_name or "UTC")
+        except (ZoneInfoNotFoundError, ValueError):
+            zone = ZoneInfo("UTC")
+        return max(since, moment.astimezone(zone).date())
+
     user_ids = [member["id"] for member in members]
     activity = store.activity_for_users(user_ids)
     local = store.local_activity(user_ids, timezone_name) if timezone_name else {}
@@ -186,17 +212,23 @@ def build_board(
             for state in sync_states.get(member["id"], [])
             if state.get("status") == "error" and state.get("error")
         ]
+        mine = joined_on(member)
+        # Someone who joined last week has no business being shown four weeks of
+        # misses, so their window starts when they did.
+        my_window = window_start if mine is None else max(window_start, mine)
         rows.append(
             MemberBoard(
                 user=member,
                 stats=compute_stats(
-                    merged, today, since=window_start, streak_since=since
+                    merged, today, since=my_window, streak_since=mine
                 ),
-                calendar=build_calendar(merged, today, weeks, since=since),
+                calendar=build_calendar(merged, today, weeks, since=mine),
                 sources=sorted(source for source in per_source if per_source[source]),
                 problems=merged,
                 errors=errors,
                 solved_today=solved.get(member["id"], []),
+                since=mine,
+                today=today,
             )
         )
 

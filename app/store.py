@@ -614,6 +614,23 @@ def solve_history(
     return [{"day": day, "problems": items} for day, items in sorted(days.items(), reverse=True)]
 
 
+def can_see_problems(viewer_id: int, target_id: int) -> bool:
+    """You may see someone's titles if they are you, or you share a group and they
+    have not turned titles off."""
+    if viewer_id == target_id:
+        return True
+    with db.connection() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM memberships mine
+                 JOIN memberships theirs ON theirs.group_id = mine.group_id
+                 JOIN users u ON u.id = theirs.user_id
+                WHERE mine.user_id = %s AND theirs.user_id = %s AND u.show_problems
+                LIMIT 1""",
+            (viewer_id, target_id),
+        ).fetchone()
+    return row is not None
+
+
 def set_show_problems(user_id: int, visible: bool) -> None:
     with db.transaction() as conn:
         conn.execute("UPDATE users SET show_problems = %s WHERE id = %s", (visible, user_id))

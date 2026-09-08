@@ -7,7 +7,7 @@ import os
 import secrets
 from urllib.parse import quote, unquote_plus
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -1248,6 +1248,25 @@ async def cron_sync(request: Request):
             "results": {str(k): v for k, v in results.items()},
         }
     )
+
+
+@app.get("/api/day/{user_id}/{day}.json")
+async def day_detail(request: Request, user_id: int, day: str):
+    """What one person solved on one day. Backs the click-a-square popover."""
+    viewer = require_user(request)
+    if not viewer:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not store.can_see_problems(viewer["id"], user_id):
+        # 404 rather than 403: whether you share a group is itself private.
+        return JSONResponse({"error": "not found"}, status_code=404)
+    try:
+        when = date.fromisoformat(day)
+    except ValueError:
+        return JSONResponse({"error": "bad date"}, status_code=400)
+
+    zone = _first_group_timezone(viewer)
+    problems = store.problems_on([user_id], when, zone).get(user_id, [])
+    return JSONResponse({"day": when.isoformat(), "problems": problems})
 
 
 @app.get("/api/g/{group_id}.json")

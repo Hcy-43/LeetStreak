@@ -145,6 +145,22 @@ def main() -> None:
             "UPDATE groups SET created_at = %s WHERE id = %s",
             (started.isoformat(timespec="seconds"), group["id"]),
         )
+        # Memberships have to move with it, or everyone looks like they joined
+        # today and nobody has missed anything. Nina arrives late on purpose, so
+        # the board shows a shorter denominator for her.
+        conn.execute(
+            "UPDATE memberships SET joined_at = %s WHERE group_id = %s",
+            (started.isoformat(timespec="seconds"), group["id"]),
+        )
+        latecomer = store.get_user_by_email("nina@example.com")
+        conn.execute(
+            "UPDATE memberships SET joined_at = %s WHERE group_id = %s AND user_id = %s",
+            (
+                (datetime.now(timezone.utc) - timedelta(days=6)).isoformat(timespec="seconds"),
+                group["id"],
+                latecomer["id"],
+            ),
+        )
 
     store.save_problems(
         [

@@ -171,6 +171,9 @@ a random key that changes on every restart and logs everyone out.
 GitHub source is skipped: unauthenticated GitHub allows 60 requests/hour, and the
 contributions calendar requires auth outright. LeetCode needs no token.
 
+Clicking a filled square shows what was solved that day. You can do this on your own
+board and on a groupmate's, unless they have turned their titles off.
+
 ## Coming back to a problem
 
 Your home page keeps two things nobody else can see. **Worth another look** lists

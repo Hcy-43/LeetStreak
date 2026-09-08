@@ -1,4 +1,5 @@
 {# Expects: cal (streaks.Calendar), label (accessible description) #}
+<div class="heatmap-wrap">
 <div class="heatmap{% if cal.columns | length <= 5 %} narrow{% endif %}"
      style="--weeks: {{ cal.columns | length }}">
   <div class="heatmap-months" aria-hidden="true">
@@ -16,6 +17,12 @@
           {% for cell in column %}
             {% if cell.is_future or cell.is_before_start %}
               <span class="hm-cell future"></span>
+            {% elif cell.count and owner_id %}
+              <button type="button"
+                      class="hm-cell l{{ cell.level }}{% if cell.is_today %} today{% endif %}"
+                      data-day="{{ cell.day.isoformat() }}" data-owner="{{ owner_id }}"
+                      title="{{ cell.count }} on {{ cell.day.strftime('%a %d %b %Y') }}"
+                      aria-label="{{ cell.count }} solved on {{ cell.day.strftime('%d %b %Y') }}"></button>
             {% else %}
               <span class="hm-cell l{{ cell.level }}{% if cell.is_today %} today{% endif %}"
                     title="{{ cell.count }} on {{ cell.day.strftime('%a %d %b %Y') }}"></span>
@@ -25,4 +32,6 @@
       {% endfor %}
     </div>
   </div>
+</div>
+  <div class="day-detail" hidden aria-live="polite"></div>
 </div>
