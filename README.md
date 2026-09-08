@@ -37,6 +37,10 @@ uv run python scripts/seed_demo.py
 That creates five fake people in a group called "Daily grind crew"; sign in as
 `dana@example.com` with password `demo-password-1`.
 
+If you are an AI agent picking this up, start with **[CLAUDE.md](CLAUDE.md)** — the
+conventions, the reasoning behind the time handling, and the traps that already cost
+someone a day.
+
 ## Putting it online
 
 See **[DEPLOY.md](DEPLOY.md)** — Render plus a free Neon database, the mail provider and
